@@ -1,0 +1,1490 @@
+[
+ {
+  "iso3": "ALB",
+  "name": "Albania",
+  "official": "Republic of Albania",
+  "capital": [
+   "Tirana"
+  ],
+  "region": "Europe",
+  "subregion": "Southeast Europe",
+  "languages": [
+   "Albanian"
+  ],
+  "area": 28748
+ },
+ {
+  "iso3": "DZA",
+  "name": "Algeria",
+  "official": "People's Democratic Republic of Algeria",
+  "capital": [
+   "Algiers"
+  ],
+  "region": "Africa",
+  "subregion": "Northern Africa",
+  "languages": [
+   "Arabic"
+  ],
+  "area": 2381741
+ },
+ {
+  "iso3": "AND",
+  "name": "Andorra",
+  "official": "Principality of Andorra",
+  "capital": [
+   "Andorra la Vella"
+  ],
+  "region": "Europe",
+  "subregion": "Southern Europe",
+  "languages": [
+   "Catalan"
+  ],
+  "area": 468
+ },
+ {
+  "iso3": "AGO",
+  "name": "Angola",
+  "official": "Republic of Angola",
+  "capital": [
+   "Luanda"
+  ],
+  "region": "Africa",
+  "subregion": "Middle Africa",
+  "languages": [
+   "Portuguese"
+  ],
+  "area": 1246700
+ },
+ {
+  "iso3": "AUT",
+  "name": "Austria",
+  "official": "Republic of Austria",
+  "capital": [
+   "Vienna"
+  ],
+  "region": "Europe",
+  "subregion": "Central Europe",
+  "languages": [
+   "Austro-Bavarian German"
+  ],
+  "area": 83871
+ },
+ {
+  "iso3": "BLR",
+  "name": "Belarus",
+  "official": "Republic of Belarus",
+  "capital": [
+   "Minsk"
+  ],
+  "region": "Europe",
+  "subregion": "Eastern Europe",
+  "languages": [
+   "Belarusian",
+   "Russian"
+  ],
+  "area": 207600
+ },
+ {
+  "iso3": "BEL",
+  "name": "Belgium",
+  "official": "Kingdom of Belgium",
+  "capital": [
+   "Brussels"
+  ],
+  "region": "Europe",
+  "subregion": "Western Europe",
+  "languages": [
+   "German",
+   "French",
+   "Dutch"
+  ],
+  "area": 30528
+ },
+ {
+  "iso3": "BEN",
+  "name": "Benin",
+  "official": "Republic of Benin",
+  "capital": [
+   "Porto-Novo"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "French"
+  ],
+  "area": 112622
+ },
+ {
+  "iso3": "BIH",
+  "name": "Bosnia and Herzegovina",
+  "official": "Bosnia and Herzegovina",
+  "capital": [
+   "Sarajevo"
+  ],
+  "region": "Europe",
+  "subregion": "Southeast Europe",
+  "languages": [
+   "Bosnian",
+   "Croatian",
+   "Serbian"
+  ],
+  "area": 51209
+ },
+ {
+  "iso3": "BWA",
+  "name": "Botswana",
+  "official": "Republic of Botswana",
+  "capital": [
+   "Gaborone"
+  ],
+  "region": "Africa",
+  "subregion": "Southern Africa",
+  "languages": [
+   "English",
+   "Tswana"
+  ],
+  "area": 582000
+ },
+ {
+  "iso3": "BGR",
+  "name": "Bulgaria",
+  "official": "Republic of Bulgaria",
+  "capital": [
+   "Sofia"
+  ],
+  "region": "Europe",
+  "subregion": "Southeast Europe",
+  "languages": [
+   "Bulgarian"
+  ],
+  "area": 110879
+ },
+ {
+  "iso3": "BFA",
+  "name": "Burkina Faso",
+  "official": "Burkina Faso",
+  "capital": [
+   "Ouagadougou"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "French"
+  ],
+  "area": 272967
+ },
+ {
+  "iso3": "BDI",
+  "name": "Burundi",
+  "official": "Republic of Burundi",
+  "capital": [
+   "Gitega"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "French",
+   "Kirundi"
+  ],
+  "area": 27834
+ },
+ {
+  "iso3": "CMR",
+  "name": "Cameroon",
+  "official": "Republic of Cameroon",
+  "capital": [
+   "Yaoundé"
+  ],
+  "region": "Africa",
+  "subregion": "Middle Africa",
+  "languages": [
+   "English",
+   "French"
+  ],
+  "area": 475442
+ },
+ {
+  "iso3": "CPV",
+  "name": "Cape Verde",
+  "official": "Republic of Cabo Verde",
+  "capital": [
+   "Praia"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "Portuguese"
+  ],
+  "area": 4033
+ },
+ {
+  "iso3": "CAF",
+  "name": "Central African Republic",
+  "official": "Central African Republic",
+  "capital": [
+   "Bangui"
+  ],
+  "region": "Africa",
+  "subregion": "Middle Africa",
+  "languages": [
+   "French",
+   "Sango"
+  ],
+  "area": 622984
+ },
+ {
+  "iso3": "TCD",
+  "name": "Chad",
+  "official": "Republic of Chad",
+  "capital": [
+   "N'Djamena"
+  ],
+  "region": "Africa",
+  "subregion": "Middle Africa",
+  "languages": [
+   "Arabic",
+   "French"
+  ],
+  "area": 1284000
+ },
+ {
+  "iso3": "COM",
+  "name": "Comoros",
+  "official": "Union of the Comoros",
+  "capital": [
+   "Moroni"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "Arabic",
+   "French",
+   "Comorian"
+  ],
+  "area": 1862
+ },
+ {
+  "iso3": "COG",
+  "name": "Congo",
+  "official": "Republic of the Congo",
+  "capital": [
+   "Brazzaville"
+  ],
+  "region": "Africa",
+  "subregion": "Middle Africa",
+  "languages": [
+   "French",
+   "Kikongo",
+   "Lingala"
+  ],
+  "area": 342000
+ },
+ {
+  "iso3": "HRV",
+  "name": "Croatia",
+  "official": "Republic of Croatia",
+  "capital": [
+   "Zagreb"
+  ],
+  "region": "Europe",
+  "subregion": "Southeast Europe",
+  "languages": [
+   "Croatian"
+  ],
+  "area": 56594
+ },
+ {
+  "iso3": "CYP",
+  "name": "Cyprus",
+  "official": "Republic of Cyprus",
+  "capital": [
+   "Nicosia"
+  ],
+  "region": "Europe",
+  "subregion": "Southern Europe",
+  "languages": [
+   "Greek",
+   "Turkish"
+  ],
+  "area": 9251
+ },
+ {
+  "iso3": "CZE",
+  "name": "Czechia",
+  "official": "Czech Republic",
+  "capital": [
+   "Prague"
+  ],
+  "region": "Europe",
+  "subregion": "Central Europe",
+  "languages": [
+   "Czech",
+   "Slovak"
+  ],
+  "area": 78865
+ },
+ {
+  "iso3": "DNK",
+  "name": "Denmark",
+  "official": "Kingdom of Denmark",
+  "capital": [
+   "Copenhagen"
+  ],
+  "region": "Europe",
+  "subregion": "Northern Europe",
+  "languages": [
+   "Danish"
+  ],
+  "area": 43094
+ },
+ {
+  "iso3": "DJI",
+  "name": "Djibouti",
+  "official": "Republic of Djibouti",
+  "capital": [
+   "Djibouti"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "Arabic",
+   "French"
+  ],
+  "area": 23200
+ },
+ {
+  "iso3": "COD",
+  "name": "DR Congo",
+  "official": "Democratic Republic of the Congo",
+  "capital": [
+   "Kinshasa"
+  ],
+  "region": "Africa",
+  "subregion": "Middle Africa",
+  "languages": [
+   "French",
+   "Kikongo",
+   "Lingala",
+   "Tshiluba",
+   "Swahili"
+  ],
+  "area": 2344858
+ },
+ {
+  "iso3": "EGY",
+  "name": "Egypt",
+  "official": "Arab Republic of Egypt",
+  "capital": [
+   "Cairo"
+  ],
+  "region": "Africa",
+  "subregion": "Northern Africa",
+  "languages": [
+   "Arabic"
+  ],
+  "area": 1002450
+ },
+ {
+  "iso3": "GNQ",
+  "name": "Equatorial Guinea",
+  "official": "Republic of Equatorial Guinea",
+  "capital": [
+   "Malabo"
+  ],
+  "region": "Africa",
+  "subregion": "Middle Africa",
+  "languages": [
+   "French",
+   "Portuguese",
+   "Spanish"
+  ],
+  "area": 28051
+ },
+ {
+  "iso3": "ERI",
+  "name": "Eritrea",
+  "official": "State of Eritrea",
+  "capital": [
+   "Asmara"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "Arabic",
+   "English",
+   "Tigrinya"
+  ],
+  "area": 117600
+ },
+ {
+  "iso3": "EST",
+  "name": "Estonia",
+  "official": "Republic of Estonia",
+  "capital": [
+   "Tallinn"
+  ],
+  "region": "Europe",
+  "subregion": "Northern Europe",
+  "languages": [
+   "Estonian"
+  ],
+  "area": 45227
+ },
+ {
+  "iso3": "SWZ",
+  "name": "Eswatini",
+  "official": "Kingdom of Eswatini",
+  "capital": [
+   "Lobamba"
+  ],
+  "region": "Africa",
+  "subregion": "Southern Africa",
+  "languages": [
+   "English",
+   "Swazi"
+  ],
+  "area": 17364
+ },
+ {
+  "iso3": "ETH",
+  "name": "Ethiopia",
+  "official": "Federal Democratic Republic of Ethiopia",
+  "capital": [
+   "Addis Ababa"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "Amharic"
+  ],
+  "area": 1104300
+ },
+ {
+  "iso3": "FIN",
+  "name": "Finland",
+  "official": "Republic of Finland",
+  "capital": [
+   "Helsinki"
+  ],
+  "region": "Europe",
+  "subregion": "Northern Europe",
+  "languages": [
+   "Finnish",
+   "Swedish"
+  ],
+  "area": 338424
+ },
+ {
+  "iso3": "FRA",
+  "name": "France",
+  "official": "French Republic",
+  "capital": [
+   "Paris"
+  ],
+  "region": "Europe",
+  "subregion": "Western Europe",
+  "languages": [
+   "French"
+  ],
+  "area": 551695
+ },
+ {
+  "iso3": "GAB",
+  "name": "Gabon",
+  "official": "Gabonese Republic",
+  "capital": [
+   "Libreville"
+  ],
+  "region": "Africa",
+  "subregion": "Middle Africa",
+  "languages": [
+   "French"
+  ],
+  "area": 267668
+ },
+ {
+  "iso3": "GMB",
+  "name": "Gambia",
+  "official": "Republic of the Gambia",
+  "capital": [
+   "Banjul"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "English"
+  ],
+  "area": 10689
+ },
+ {
+  "iso3": "DEU",
+  "name": "Germany",
+  "official": "Federal Republic of Germany",
+  "capital": [
+   "Berlin"
+  ],
+  "region": "Europe",
+  "subregion": "Western Europe",
+  "languages": [
+   "German"
+  ],
+  "area": 357114
+ },
+ {
+  "iso3": "GHA",
+  "name": "Ghana",
+  "official": "Republic of Ghana",
+  "capital": [
+   "Accra"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "English"
+  ],
+  "area": 238533
+ },
+ {
+  "iso3": "GRC",
+  "name": "Greece",
+  "official": "Hellenic Republic",
+  "capital": [
+   "Athens"
+  ],
+  "region": "Europe",
+  "subregion": "Southern Europe",
+  "languages": [
+   "Greek"
+  ],
+  "area": 131990
+ },
+ {
+  "iso3": "GIN",
+  "name": "Guinea",
+  "official": "Republic of Guinea",
+  "capital": [
+   "Conakry"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "French"
+  ],
+  "area": 245857
+ },
+ {
+  "iso3": "GNB",
+  "name": "Guinea-Bissau",
+  "official": "Republic of Guinea-Bissau",
+  "capital": [
+   "Bissau"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "Portuguese",
+   "Upper Guinea Creole"
+  ],
+  "area": 36125
+ },
+ {
+  "iso3": "HUN",
+  "name": "Hungary",
+  "official": "Hungary",
+  "capital": [
+   "Budapest"
+  ],
+  "region": "Europe",
+  "subregion": "Central Europe",
+  "languages": [
+   "Hungarian"
+  ],
+  "area": 93028
+ },
+ {
+  "iso3": "ISL",
+  "name": "Iceland",
+  "official": "Iceland",
+  "capital": [
+   "Reykjavik"
+  ],
+  "region": "Europe",
+  "subregion": "Northern Europe",
+  "languages": [
+   "Icelandic"
+  ],
+  "area": 103000
+ },
+ {
+  "iso3": "IRL",
+  "name": "Ireland",
+  "official": "Republic of Ireland",
+  "capital": [
+   "Dublin"
+  ],
+  "region": "Europe",
+  "subregion": "Northern Europe",
+  "languages": [
+   "English",
+   "Irish"
+  ],
+  "area": 70273
+ },
+ {
+  "iso3": "ITA",
+  "name": "Italy",
+  "official": "Italian Republic",
+  "capital": [
+   "Rome"
+  ],
+  "region": "Europe",
+  "subregion": "Southern Europe",
+  "languages": [
+   "Italian"
+  ],
+  "area": 301336
+ },
+ {
+  "iso3": "CIV",
+  "name": "Ivory Coast",
+  "official": "Republic of Côte d'Ivoire",
+  "capital": [
+   "Yamoussoukro"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "French"
+  ],
+  "area": 322463
+ },
+ {
+  "iso3": "KEN",
+  "name": "Kenya",
+  "official": "Republic of Kenya",
+  "capital": [
+   "Nairobi"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "English",
+   "Swahili"
+  ],
+  "area": 580367
+ },
+ {
+  "iso3": "UNK",
+  "name": "Kosovo",
+  "official": "Republic of Kosovo",
+  "capital": [
+   "Pristina"
+  ],
+  "region": "Europe",
+  "subregion": "Southeast Europe",
+  "languages": [
+   "Albanian",
+   "Serbian"
+  ],
+  "area": 10908
+ },
+ {
+  "iso3": "LVA",
+  "name": "Latvia",
+  "official": "Republic of Latvia",
+  "capital": [
+   "Riga"
+  ],
+  "region": "Europe",
+  "subregion": "Northern Europe",
+  "languages": [
+   "Latvian"
+  ],
+  "area": 64559
+ },
+ {
+  "iso3": "LSO",
+  "name": "Lesotho",
+  "official": "Kingdom of Lesotho",
+  "capital": [
+   "Maseru"
+  ],
+  "region": "Africa",
+  "subregion": "Southern Africa",
+  "languages": [
+   "English",
+   "Sotho"
+  ],
+  "area": 30355
+ },
+ {
+  "iso3": "LBR",
+  "name": "Liberia",
+  "official": "Republic of Liberia",
+  "capital": [
+   "Monrovia"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "English"
+  ],
+  "area": 111369
+ },
+ {
+  "iso3": "LBY",
+  "name": "Libya",
+  "official": "State of Libya",
+  "capital": [
+   "Tripoli"
+  ],
+  "region": "Africa",
+  "subregion": "Northern Africa",
+  "languages": [
+   "Arabic"
+  ],
+  "area": 1759540
+ },
+ {
+  "iso3": "LIE",
+  "name": "Liechtenstein",
+  "official": "Principality of Liechtenstein",
+  "capital": [
+   "Vaduz"
+  ],
+  "region": "Europe",
+  "subregion": "Western Europe",
+  "languages": [
+   "German"
+  ],
+  "area": 160
+ },
+ {
+  "iso3": "LTU",
+  "name": "Lithuania",
+  "official": "Republic of Lithuania",
+  "capital": [
+   "Vilnius"
+  ],
+  "region": "Europe",
+  "subregion": "Northern Europe",
+  "languages": [
+   "Lithuanian"
+  ],
+  "area": 65300
+ },
+ {
+  "iso3": "LUX",
+  "name": "Luxembourg",
+  "official": "Grand Duchy of Luxembourg",
+  "capital": [
+   "Luxembourg"
+  ],
+  "region": "Europe",
+  "subregion": "Western Europe",
+  "languages": [
+   "German",
+   "French",
+   "Luxembourgish"
+  ],
+  "area": 2586
+ },
+ {
+  "iso3": "MDG",
+  "name": "Madagascar",
+  "official": "Republic of Madagascar",
+  "capital": [
+   "Antananarivo"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "French",
+   "Malagasy"
+  ],
+  "area": 587041
+ },
+ {
+  "iso3": "MWI",
+  "name": "Malawi",
+  "official": "Republic of Malawi",
+  "capital": [
+   "Lilongwe"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "English",
+   "Chewa"
+  ],
+  "area": 118484
+ },
+ {
+  "iso3": "MLI",
+  "name": "Mali",
+  "official": "Republic of Mali",
+  "capital": [
+   "Bamako"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "French"
+  ],
+  "area": 1240192
+ },
+ {
+  "iso3": "MLT",
+  "name": "Malta",
+  "official": "Republic of Malta",
+  "capital": [
+   "Valletta"
+  ],
+  "region": "Europe",
+  "subregion": "Southern Europe",
+  "languages": [
+   "English",
+   "Maltese"
+  ],
+  "area": 316
+ },
+ {
+  "iso3": "MRT",
+  "name": "Mauritania",
+  "official": "Islamic Republic of Mauritania",
+  "capital": [
+   "Nouakchott"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "Arabic"
+  ],
+  "area": 1030700
+ },
+ {
+  "iso3": "MUS",
+  "name": "Mauritius",
+  "official": "Republic of Mauritius",
+  "capital": [
+   "Port Louis"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "English",
+   "French",
+   "Mauritian Creole"
+  ],
+  "area": 2040
+ },
+ {
+  "iso3": "MDA",
+  "name": "Moldova",
+  "official": "Republic of Moldova",
+  "capital": [
+   "Chișinău"
+  ],
+  "region": "Europe",
+  "subregion": "Eastern Europe",
+  "languages": [
+   "Moldavian"
+  ],
+  "area": 33846
+ },
+ {
+  "iso3": "MCO",
+  "name": "Monaco",
+  "official": "Principality of Monaco",
+  "capital": [
+   "Monaco"
+  ],
+  "region": "Europe",
+  "subregion": "Western Europe",
+  "languages": [
+   "French"
+  ],
+  "area": 2.02
+ },
+ {
+  "iso3": "MNE",
+  "name": "Montenegro",
+  "official": "Montenegro",
+  "capital": [
+   "Podgorica"
+  ],
+  "region": "Europe",
+  "subregion": "Southeast Europe",
+  "languages": [
+   "Montenegrin"
+  ],
+  "area": 13812
+ },
+ {
+  "iso3": "MAR",
+  "name": "Morocco",
+  "official": "Kingdom of Morocco",
+  "capital": [
+   "Rabat"
+  ],
+  "region": "Africa",
+  "subregion": "Northern Africa",
+  "languages": [
+   "Arabic",
+   "Berber"
+  ],
+  "area": 446550
+ },
+ {
+  "iso3": "MOZ",
+  "name": "Mozambique",
+  "official": "Republic of Mozambique",
+  "capital": [
+   "Maputo"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "Portuguese"
+  ],
+  "area": 801590
+ },
+ {
+  "iso3": "NAM",
+  "name": "Namibia",
+  "official": "Republic of Namibia",
+  "capital": [
+   "Windhoek"
+  ],
+  "region": "Africa",
+  "subregion": "Southern Africa",
+  "languages": [
+   "Afrikaans",
+   "German",
+   "English",
+   "Herero",
+   "Khoekhoe",
+   "Kwangali",
+   "Lozi",
+   "Ndonga",
+   "Tswana"
+  ],
+  "area": 825615
+ },
+ {
+  "iso3": "NLD",
+  "name": "Netherlands",
+  "official": "Kingdom of the Netherlands",
+  "capital": [
+   "Amsterdam"
+  ],
+  "region": "Europe",
+  "subregion": "Western Europe",
+  "languages": [
+   "Dutch"
+  ],
+  "area": 41850
+ },
+ {
+  "iso3": "NER",
+  "name": "Niger",
+  "official": "Republic of Niger",
+  "capital": [
+   "Niamey"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "French"
+  ],
+  "area": 1267000
+ },
+ {
+  "iso3": "NGA",
+  "name": "Nigeria",
+  "official": "Federal Republic of Nigeria",
+  "capital": [
+   "Abuja"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "English"
+  ],
+  "area": 923768
+ },
+ {
+  "iso3": "MKD",
+  "name": "North Macedonia",
+  "official": "Republic of North Macedonia",
+  "capital": [
+   "Skopje"
+  ],
+  "region": "Europe",
+  "subregion": "Southeast Europe",
+  "languages": [
+   "Macedonian"
+  ],
+  "area": 25713
+ },
+ {
+  "iso3": "NOR",
+  "name": "Norway",
+  "official": "Kingdom of Norway",
+  "capital": [
+   "Oslo"
+  ],
+  "region": "Europe",
+  "subregion": "Northern Europe",
+  "languages": [
+   "Norwegian Nynorsk",
+   "Norwegian Bokmål",
+   "Sami"
+  ],
+  "area": 323802
+ },
+ {
+  "iso3": "POL",
+  "name": "Poland",
+  "official": "Republic of Poland",
+  "capital": [
+   "Warsaw"
+  ],
+  "region": "Europe",
+  "subregion": "Central Europe",
+  "languages": [
+   "Polish"
+  ],
+  "area": 312679
+ },
+ {
+  "iso3": "PRT",
+  "name": "Portugal",
+  "official": "Portuguese Republic",
+  "capital": [
+   "Lisbon"
+  ],
+  "region": "Europe",
+  "subregion": "Southern Europe",
+  "languages": [
+   "Portuguese"
+  ],
+  "area": 92090
+ },
+ {
+  "iso3": "ROU",
+  "name": "Romania",
+  "official": "Romania",
+  "capital": [
+   "Bucharest"
+  ],
+  "region": "Europe",
+  "subregion": "Southeast Europe",
+  "languages": [
+   "Romanian"
+  ],
+  "area": 238391
+ },
+ {
+  "iso3": "RUS",
+  "name": "Russia",
+  "official": "Russian Federation",
+  "capital": [
+   "Moscow"
+  ],
+  "region": "Europe",
+  "subregion": "Eastern Europe",
+  "languages": [
+   "Russian"
+  ],
+  "area": 17098242
+ },
+ {
+  "iso3": "RWA",
+  "name": "Rwanda",
+  "official": "Republic of Rwanda",
+  "capital": [
+   "Kigali"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "English",
+   "French",
+   "Kinyarwanda"
+  ],
+  "area": 26338
+ },
+ {
+  "iso3": "SMR",
+  "name": "San Marino",
+  "official": "Most Serene Republic of San Marino",
+  "capital": [
+   "City of San Marino"
+  ],
+  "region": "Europe",
+  "subregion": "Southern Europe",
+  "languages": [
+   "Italian"
+  ],
+  "area": 61
+ },
+ {
+  "iso3": "STP",
+  "name": "São Tomé and Príncipe",
+  "official": "Democratic Republic of São Tomé and Príncipe",
+  "capital": [
+   "São Tomé"
+  ],
+  "region": "Africa",
+  "subregion": "Middle Africa",
+  "languages": [
+   "Portuguese"
+  ],
+  "area": 964
+ },
+ {
+  "iso3": "SEN",
+  "name": "Senegal",
+  "official": "Republic of Senegal",
+  "capital": [
+   "Dakar"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "French"
+  ],
+  "area": 196722
+ },
+ {
+  "iso3": "SRB",
+  "name": "Serbia",
+  "official": "Republic of Serbia",
+  "capital": [
+   "Belgrade"
+  ],
+  "region": "Europe",
+  "subregion": "Southeast Europe",
+  "languages": [
+   "Serbian"
+  ],
+  "area": 88361
+ },
+ {
+  "iso3": "SYC",
+  "name": "Seychelles",
+  "official": "Republic of Seychelles",
+  "capital": [
+   "Victoria"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "Seychellois Creole",
+   "English",
+   "French"
+  ],
+  "area": 452
+ },
+ {
+  "iso3": "SLE",
+  "name": "Sierra Leone",
+  "official": "Republic of Sierra Leone",
+  "capital": [
+   "Freetown"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "English"
+  ],
+  "area": 71740
+ },
+ {
+  "iso3": "SVK",
+  "name": "Slovakia",
+  "official": "Slovak Republic",
+  "capital": [
+   "Bratislava"
+  ],
+  "region": "Europe",
+  "subregion": "Central Europe",
+  "languages": [
+   "Slovak"
+  ],
+  "area": 49037
+ },
+ {
+  "iso3": "SVN",
+  "name": "Slovenia",
+  "official": "Republic of Slovenia",
+  "capital": [
+   "Ljubljana"
+  ],
+  "region": "Europe",
+  "subregion": "Central Europe",
+  "languages": [
+   "Slovene"
+  ],
+  "area": 20273
+ },
+ {
+  "iso3": "SOM",
+  "name": "Somalia",
+  "official": "Federal Republic of Somalia",
+  "capital": [
+   "Mogadishu"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "Arabic",
+   "Somali"
+  ],
+  "area": 637657
+ },
+ {
+  "iso3": "ZAF",
+  "name": "South Africa",
+  "official": "Republic of South Africa",
+  "capital": [
+   "Pretoria",
+   "Bloemfontein",
+   "Cape Town"
+  ],
+  "region": "Africa",
+  "subregion": "Southern Africa",
+  "languages": [
+   "Afrikaans",
+   "English",
+   "Southern Ndebele",
+   "Northern Sotho",
+   "Southern Sotho",
+   "Swazi",
+   "Tswana",
+   "Tsonga",
+   "Venda",
+   "Xhosa",
+   "Zulu"
+  ],
+  "area": 1221037
+ },
+ {
+  "iso3": "SSD",
+  "name": "South Sudan",
+  "official": "Republic of South Sudan",
+  "capital": [
+   "Juba"
+  ],
+  "region": "Africa",
+  "subregion": "Middle Africa",
+  "languages": [
+   "English"
+  ],
+  "area": 619745
+ },
+ {
+  "iso3": "ESP",
+  "name": "Spain",
+  "official": "Kingdom of Spain",
+  "capital": [
+   "Madrid"
+  ],
+  "region": "Europe",
+  "subregion": "Southern Europe",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 505992
+ },
+ {
+  "iso3": "SDN",
+  "name": "Sudan",
+  "official": "Republic of the Sudan",
+  "capital": [
+   "Khartoum"
+  ],
+  "region": "Africa",
+  "subregion": "Northern Africa",
+  "languages": [
+   "Arabic",
+   "English"
+  ],
+  "area": 1886068
+ },
+ {
+  "iso3": "SWE",
+  "name": "Sweden",
+  "official": "Kingdom of Sweden",
+  "capital": [
+   "Stockholm"
+  ],
+  "region": "Europe",
+  "subregion": "Northern Europe",
+  "languages": [
+   "Swedish"
+  ],
+  "area": 450295
+ },
+ {
+  "iso3": "CHE",
+  "name": "Switzerland",
+  "official": "Swiss Confederation",
+  "capital": [
+   "Bern"
+  ],
+  "region": "Europe",
+  "subregion": "Western Europe",
+  "languages": [
+   "French",
+   "Swiss German",
+   "Italian",
+   "Romansh"
+  ],
+  "area": 41284
+ },
+ {
+  "iso3": "TZA",
+  "name": "Tanzania",
+  "official": "United Republic of Tanzania",
+  "capital": [
+   "Dodoma"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "English",
+   "Swahili"
+  ],
+  "area": 945087
+ },
+ {
+  "iso3": "TGO",
+  "name": "Togo",
+  "official": "Togolese Republic",
+  "capital": [
+   "Lomé"
+  ],
+  "region": "Africa",
+  "subregion": "Western Africa",
+  "languages": [
+   "French"
+  ],
+  "area": 56785
+ },
+ {
+  "iso3": "TUN",
+  "name": "Tunisia",
+  "official": "Tunisian Republic",
+  "capital": [
+   "Tunis"
+  ],
+  "region": "Africa",
+  "subregion": "Northern Africa",
+  "languages": [
+   "Arabic"
+  ],
+  "area": 163610
+ },
+ {
+  "iso3": "UGA",
+  "name": "Uganda",
+  "official": "Republic of Uganda",
+  "capital": [
+   "Kampala"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "English",
+   "Swahili"
+  ],
+  "area": 241550
+ },
+ {
+  "iso3": "UKR",
+  "name": "Ukraine",
+  "official": "Ukraine",
+  "capital": [
+   "Kyiv"
+  ],
+  "region": "Europe",
+  "subregion": "Eastern Europe",
+  "languages": [
+   "Ukrainian"
+  ],
+  "area": 603500
+ },
+ {
+  "iso3": "GBR",
+  "name": "United Kingdom",
+  "official": "United Kingdom of Great Britain and Northern Ireland",
+  "capital": [
+   "London"
+  ],
+  "region": "Europe",
+  "subregion": "Northern Europe",
+  "languages": [
+   "English"
+  ],
+  "area": 242900
+ },
+ {
+  "iso3": "VAT",
+  "name": "Vatican City",
+  "official": "Vatican City State",
+  "capital": [
+   "Vatican City"
+  ],
+  "region": "Europe",
+  "subregion": "Southern Europe",
+  "languages": [
+   "Italian",
+   "Latin"
+  ],
+  "area": 0.44
+ },
+ {
+  "iso3": "ZMB",
+  "name": "Zambia",
+  "official": "Republic of Zambia",
+  "capital": [
+   "Lusaka"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "English"
+  ],
+  "area": 752612
+ },
+ {
+  "iso3": "ZWE",
+  "name": "Zimbabwe",
+  "official": "Republic of Zimbabwe",
+  "capital": [
+   "Harare"
+  ],
+  "region": "Africa",
+  "subregion": "Eastern Africa",
+  "languages": [
+   "Chibarwe",
+   "English",
+   "Kalanga",
+   "Khoisan",
+   "Ndau",
+   "Northern Ndebele",
+   "Chewa",
+   "Shona",
+   "Sotho",
+   "Tonga",
+   "Tswana",
+   "Tsonga",
+   "Venda",
+   "Xhosa",
+   "Zimbabwean Sign Language"
+  ],
+  "area": 390757
+ }
+]

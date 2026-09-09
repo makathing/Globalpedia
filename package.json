@@ -1,0 +1,43 @@
+{
+  "name": "globalpedia",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test tests/",
+    "dev": "vite",
+    "build": "npm run build:data && tsc -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json",
+    "build:data": "node scripts/build-data.mjs",
+    "validate:content": "node scripts/validate-content.mjs",
+    "smoke": "node tests/smoke.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makathing/Globalpedia.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/makathing/Globalpedia/issues"
+  },
+  "homepage": "https://github.com/makathing/Globalpedia#readme",
+  "type": "module",
+  "private": "true",
+  "devDependencies": {
+    "@types/node": "^26.5.0",
+    "@types/three": "^0.185.4",
+    "@types/topojson-client": "^3.1.5",
+    "@types/topojson-specification": "^1.0.5",
+    "playwright": "^1.63.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  },
+  "dependencies": {
+    "three": "^0.186.0",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2"
+  }
+}

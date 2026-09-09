@@ -1,0 +1,1381 @@
+[
+ {
+  "iso3": "AFG",
+  "name": "Afghanistan",
+  "official": "Islamic Republic of Afghanistan",
+  "capital": [
+   "Kabul"
+  ],
+  "region": "Asia",
+  "subregion": "Southern Asia",
+  "languages": [
+   "Dari",
+   "Pashto",
+   "Turkmen"
+  ],
+  "area": 652230
+ },
+ {
+  "iso3": "ATG",
+  "name": "Antigua and Barbuda",
+  "official": "Antigua and Barbuda",
+  "capital": [
+   "Saint John's"
+  ],
+  "region": "Americas",
+  "subregion": "Caribbean",
+  "languages": [
+   "English"
+  ],
+  "area": 442
+ },
+ {
+  "iso3": "ARG",
+  "name": "Argentina",
+  "official": "Argentine Republic",
+  "capital": [
+   "Buenos Aires"
+  ],
+  "region": "Americas",
+  "subregion": "South America",
+  "languages": [
+   "Guaraní",
+   "Spanish"
+  ],
+  "area": 2780400
+ },
+ {
+  "iso3": "ARM",
+  "name": "Armenia",
+  "official": "Republic of Armenia",
+  "capital": [
+   "Yerevan"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Armenian"
+  ],
+  "area": 29743
+ },
+ {
+  "iso3": "AUS",
+  "name": "Australia",
+  "official": "Commonwealth of Australia",
+  "capital": [
+   "Canberra"
+  ],
+  "region": "Oceania",
+  "subregion": "Australia and New Zealand",
+  "languages": [
+   "English"
+  ],
+  "area": 7692024
+ },
+ {
+  "iso3": "AZE",
+  "name": "Azerbaijan",
+  "official": "Republic of Azerbaijan",
+  "capital": [
+   "Baku"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Azerbaijani",
+   "Russian"
+  ],
+  "area": 86600
+ },
+ {
+  "iso3": "BHS",
+  "name": "Bahamas",
+  "official": "Commonwealth of the Bahamas",
+  "capital": [
+   "Nassau"
+  ],
+  "region": "Americas",
+  "subregion": "Caribbean",
+  "languages": [
+   "English"
+  ],
+  "area": 13943
+ },
+ {
+  "iso3": "BHR",
+  "name": "Bahrain",
+  "official": "Kingdom of Bahrain",
+  "capital": [
+   "Manama"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Arabic"
+  ],
+  "area": 765
+ },
+ {
+  "iso3": "BGD",
+  "name": "Bangladesh",
+  "official": "People's Republic of Bangladesh",
+  "capital": [
+   "Dhaka"
+  ],
+  "region": "Asia",
+  "subregion": "Southern Asia",
+  "languages": [
+   "Bengali"
+  ],
+  "area": 147570
+ },
+ {
+  "iso3": "BRB",
+  "name": "Barbados",
+  "official": "Barbados",
+  "capital": [
+   "Bridgetown"
+  ],
+  "region": "Americas",
+  "subregion": "Caribbean",
+  "languages": [
+   "English"
+  ],
+  "area": 430
+ },
+ {
+  "iso3": "BLZ",
+  "name": "Belize",
+  "official": "Belize",
+  "capital": [
+   "Belmopan"
+  ],
+  "region": "Americas",
+  "subregion": "Central America",
+  "languages": [
+   "Belizean Creole",
+   "English",
+   "Spanish"
+  ],
+  "area": 22966
+ },
+ {
+  "iso3": "BTN",
+  "name": "Bhutan",
+  "official": "Kingdom of Bhutan",
+  "capital": [
+   "Thimphu"
+  ],
+  "region": "Asia",
+  "subregion": "Southern Asia",
+  "languages": [
+   "Dzongkha"
+  ],
+  "area": 38394
+ },
+ {
+  "iso3": "BOL",
+  "name": "Bolivia",
+  "official": "Plurinational State of Bolivia",
+  "capital": [
+   "Sucre"
+  ],
+  "region": "Americas",
+  "subregion": "South America",
+  "languages": [
+   "Aymara",
+   "Guaraní",
+   "Quechua",
+   "Spanish"
+  ],
+  "area": 1098581
+ },
+ {
+  "iso3": "BRA",
+  "name": "Brazil",
+  "official": "Federative Republic of Brazil",
+  "capital": [
+   "Brasília"
+  ],
+  "region": "Americas",
+  "subregion": "South America",
+  "languages": [
+   "Portuguese"
+  ],
+  "area": 8515767
+ },
+ {
+  "iso3": "BRN",
+  "name": "Brunei",
+  "official": "Nation of Brunei, Abode of Peace",
+  "capital": [
+   "Bandar Seri Begawan"
+  ],
+  "region": "Asia",
+  "subregion": "South-Eastern Asia",
+  "languages": [
+   "Malay"
+  ],
+  "area": 5765
+ },
+ {
+  "iso3": "KHM",
+  "name": "Cambodia",
+  "official": "Kingdom of Cambodia",
+  "capital": [
+   "Phnom Penh"
+  ],
+  "region": "Asia",
+  "subregion": "South-Eastern Asia",
+  "languages": [
+   "Khmer"
+  ],
+  "area": 181035
+ },
+ {
+  "iso3": "CAN",
+  "name": "Canada",
+  "official": "Canada",
+  "capital": [
+   "Ottawa"
+  ],
+  "region": "Americas",
+  "subregion": "North America",
+  "languages": [
+   "English",
+   "French"
+  ],
+  "area": 9984670
+ },
+ {
+  "iso3": "CHL",
+  "name": "Chile",
+  "official": "Republic of Chile",
+  "capital": [
+   "Santiago"
+  ],
+  "region": "Americas",
+  "subregion": "South America",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 756102
+ },
+ {
+  "iso3": "CHN",
+  "name": "China",
+  "official": "People's Republic of China",
+  "capital": [
+   "Beijing"
+  ],
+  "region": "Asia",
+  "subregion": "Eastern Asia",
+  "languages": [
+   "Chinese"
+  ],
+  "area": 9706961
+ },
+ {
+  "iso3": "COL",
+  "name": "Colombia",
+  "official": "Republic of Colombia",
+  "capital": [
+   "Bogotá"
+  ],
+  "region": "Americas",
+  "subregion": "South America",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 1141748
+ },
+ {
+  "iso3": "CRI",
+  "name": "Costa Rica",
+  "official": "Republic of Costa Rica",
+  "capital": [
+   "San José"
+  ],
+  "region": "Americas",
+  "subregion": "Central America",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 51100
+ },
+ {
+  "iso3": "CUB",
+  "name": "Cuba",
+  "official": "Republic of Cuba",
+  "capital": [
+   "Havana"
+  ],
+  "region": "Americas",
+  "subregion": "Caribbean",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 109884
+ },
+ {
+  "iso3": "DMA",
+  "name": "Dominica",
+  "official": "Commonwealth of Dominica",
+  "capital": [
+   "Roseau"
+  ],
+  "region": "Americas",
+  "subregion": "Caribbean",
+  "languages": [
+   "English"
+  ],
+  "area": 751
+ },
+ {
+  "iso3": "DOM",
+  "name": "Dominican Republic",
+  "official": "Dominican Republic",
+  "capital": [
+   "Santo Domingo"
+  ],
+  "region": "Americas",
+  "subregion": "Caribbean",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 48671
+ },
+ {
+  "iso3": "ECU",
+  "name": "Ecuador",
+  "official": "Republic of Ecuador",
+  "capital": [
+   "Quito"
+  ],
+  "region": "Americas",
+  "subregion": "South America",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 276841
+ },
+ {
+  "iso3": "SLV",
+  "name": "El Salvador",
+  "official": "Republic of El Salvador",
+  "capital": [
+   "San Salvador"
+  ],
+  "region": "Americas",
+  "subregion": "Central America",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 21041
+ },
+ {
+  "iso3": "FJI",
+  "name": "Fiji",
+  "official": "Republic of Fiji",
+  "capital": [
+   "Suva"
+  ],
+  "region": "Oceania",
+  "subregion": "Melanesia",
+  "languages": [
+   "English",
+   "Fijian",
+   "Fiji Hindi"
+  ],
+  "area": 18272
+ },
+ {
+  "iso3": "GEO",
+  "name": "Georgia",
+  "official": "Georgia",
+  "capital": [
+   "Tbilisi"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Georgian"
+  ],
+  "area": 69700
+ },
+ {
+  "iso3": "GRD",
+  "name": "Grenada",
+  "official": "Grenada",
+  "capital": [
+   "St. George's"
+  ],
+  "region": "Americas",
+  "subregion": "Caribbean",
+  "languages": [
+   "English"
+  ],
+  "area": 344
+ },
+ {
+  "iso3": "GTM",
+  "name": "Guatemala",
+  "official": "Republic of Guatemala",
+  "capital": [
+   "Guatemala City"
+  ],
+  "region": "Americas",
+  "subregion": "Central America",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 108889
+ },
+ {
+  "iso3": "GUY",
+  "name": "Guyana",
+  "official": "Co-operative Republic of Guyana",
+  "capital": [
+   "Georgetown"
+  ],
+  "region": "Americas",
+  "subregion": "South America",
+  "languages": [
+   "English"
+  ],
+  "area": 214969
+ },
+ {
+  "iso3": "HTI",
+  "name": "Haiti",
+  "official": "Republic of Haiti",
+  "capital": [
+   "Port-au-Prince"
+  ],
+  "region": "Americas",
+  "subregion": "Caribbean",
+  "languages": [
+   "French",
+   "Haitian Creole"
+  ],
+  "area": 27750
+ },
+ {
+  "iso3": "HND",
+  "name": "Honduras",
+  "official": "Republic of Honduras",
+  "capital": [
+   "Tegucigalpa"
+  ],
+  "region": "Americas",
+  "subregion": "Central America",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 112492
+ },
+ {
+  "iso3": "IND",
+  "name": "India",
+  "official": "Republic of India",
+  "capital": [
+   "New Delhi"
+  ],
+  "region": "Asia",
+  "subregion": "Southern Asia",
+  "languages": [
+   "English",
+   "Hindi",
+   "Tamil"
+  ],
+  "area": 3287590
+ },
+ {
+  "iso3": "IDN",
+  "name": "Indonesia",
+  "official": "Republic of Indonesia",
+  "capital": [
+   "Jakarta"
+  ],
+  "region": "Asia",
+  "subregion": "South-Eastern Asia",
+  "languages": [
+   "Indonesian"
+  ],
+  "area": 1904569
+ },
+ {
+  "iso3": "IRN",
+  "name": "Iran",
+  "official": "Islamic Republic of Iran",
+  "capital": [
+   "Tehran"
+  ],
+  "region": "Asia",
+  "subregion": "Southern Asia",
+  "languages": [
+   "Persian (Farsi)"
+  ],
+  "area": 1648195
+ },
+ {
+  "iso3": "IRQ",
+  "name": "Iraq",
+  "official": "Republic of Iraq",
+  "capital": [
+   "Baghdad"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Arabic",
+   "Aramaic",
+   "Sorani"
+  ],
+  "area": 438317
+ },
+ {
+  "iso3": "ISR",
+  "name": "Israel",
+  "official": "State of Israel",
+  "capital": [
+   "Jerusalem"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Arabic",
+   "Hebrew"
+  ],
+  "area": 20770
+ },
+ {
+  "iso3": "JAM",
+  "name": "Jamaica",
+  "official": "Jamaica",
+  "capital": [
+   "Kingston"
+  ],
+  "region": "Americas",
+  "subregion": "Caribbean",
+  "languages": [
+   "English",
+   "Jamaican Patois"
+  ],
+  "area": 10991
+ },
+ {
+  "iso3": "JPN",
+  "name": "Japan",
+  "official": "Japan",
+  "capital": [
+   "Tokyo"
+  ],
+  "region": "Asia",
+  "subregion": "Eastern Asia",
+  "languages": [
+   "Japanese"
+  ],
+  "area": 377930
+ },
+ {
+  "iso3": "JOR",
+  "name": "Jordan",
+  "official": "Hashemite Kingdom of Jordan",
+  "capital": [
+   "Amman"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Arabic"
+  ],
+  "area": 89342
+ },
+ {
+  "iso3": "KAZ",
+  "name": "Kazakhstan",
+  "official": "Republic of Kazakhstan",
+  "capital": [
+   "Astana"
+  ],
+  "region": "Asia",
+  "subregion": "Central Asia",
+  "languages": [
+   "Kazakh",
+   "Russian"
+  ],
+  "area": 2724900
+ },
+ {
+  "iso3": "KIR",
+  "name": "Kiribati",
+  "official": "Independent and Sovereign Republic of Kiribati",
+  "capital": [
+   "South Tarawa"
+  ],
+  "region": "Oceania",
+  "subregion": "Micronesia",
+  "languages": [
+   "English",
+   "Gilbertese"
+  ],
+  "area": 811
+ },
+ {
+  "iso3": "KWT",
+  "name": "Kuwait",
+  "official": "State of Kuwait",
+  "capital": [
+   "Kuwait City"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Arabic"
+  ],
+  "area": 17818
+ },
+ {
+  "iso3": "KGZ",
+  "name": "Kyrgyzstan",
+  "official": "Kyrgyz Republic",
+  "capital": [
+   "Bishkek"
+  ],
+  "region": "Asia",
+  "subregion": "Central Asia",
+  "languages": [
+   "Kyrgyz",
+   "Russian"
+  ],
+  "area": 199951
+ },
+ {
+  "iso3": "LAO",
+  "name": "Laos",
+  "official": "Lao People's Democratic Republic",
+  "capital": [
+   "Vientiane"
+  ],
+  "region": "Asia",
+  "subregion": "South-Eastern Asia",
+  "languages": [
+   "Lao"
+  ],
+  "area": 236800
+ },
+ {
+  "iso3": "LBN",
+  "name": "Lebanon",
+  "official": "Lebanese Republic",
+  "capital": [
+   "Beirut"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Arabic",
+   "French"
+  ],
+  "area": 10452
+ },
+ {
+  "iso3": "MYS",
+  "name": "Malaysia",
+  "official": "Malaysia",
+  "capital": [
+   "Kuala Lumpur"
+  ],
+  "region": "Asia",
+  "subregion": "South-Eastern Asia",
+  "languages": [
+   "English",
+   "Malay"
+  ],
+  "area": 330803
+ },
+ {
+  "iso3": "MDV",
+  "name": "Maldives",
+  "official": "Republic of the Maldives",
+  "capital": [
+   "Malé"
+  ],
+  "region": "Asia",
+  "subregion": "Southern Asia",
+  "languages": [
+   "Maldivian"
+  ],
+  "area": 300
+ },
+ {
+  "iso3": "MHL",
+  "name": "Marshall Islands",
+  "official": "Republic of the Marshall Islands",
+  "capital": [
+   "Majuro"
+  ],
+  "region": "Oceania",
+  "subregion": "Micronesia",
+  "languages": [
+   "English",
+   "Marshallese"
+  ],
+  "area": 181
+ },
+ {
+  "iso3": "MEX",
+  "name": "Mexico",
+  "official": "United Mexican States",
+  "capital": [
+   "Mexico City"
+  ],
+  "region": "Americas",
+  "subregion": "North America",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 1964375
+ },
+ {
+  "iso3": "FSM",
+  "name": "Micronesia",
+  "official": "Federated States of Micronesia",
+  "capital": [
+   "Palikir"
+  ],
+  "region": "Oceania",
+  "subregion": "Micronesia",
+  "languages": [
+   "English"
+  ],
+  "area": 702
+ },
+ {
+  "iso3": "MNG",
+  "name": "Mongolia",
+  "official": "Mongolia",
+  "capital": [
+   "Ulan Bator"
+  ],
+  "region": "Asia",
+  "subregion": "Eastern Asia",
+  "languages": [
+   "Mongolian"
+  ],
+  "area": 1564110
+ },
+ {
+  "iso3": "MMR",
+  "name": "Myanmar",
+  "official": "Republic of the Union of Myanmar",
+  "capital": [
+   "Naypyidaw"
+  ],
+  "region": "Asia",
+  "subregion": "South-Eastern Asia",
+  "languages": [
+   "Burmese"
+  ],
+  "area": 676578
+ },
+ {
+  "iso3": "NRU",
+  "name": "Nauru",
+  "official": "Republic of Nauru",
+  "capital": [
+   "Yaren"
+  ],
+  "region": "Oceania",
+  "subregion": "Micronesia",
+  "languages": [
+   "English",
+   "Nauru"
+  ],
+  "area": 21
+ },
+ {
+  "iso3": "NPL",
+  "name": "Nepal",
+  "official": "Federal Democratic Republic of Nepal",
+  "capital": [
+   "Kathmandu"
+  ],
+  "region": "Asia",
+  "subregion": "Southern Asia",
+  "languages": [
+   "Nepali"
+  ],
+  "area": 147181
+ },
+ {
+  "iso3": "NZL",
+  "name": "New Zealand",
+  "official": "New Zealand",
+  "capital": [
+   "Wellington"
+  ],
+  "region": "Oceania",
+  "subregion": "Australia and New Zealand",
+  "languages": [
+   "English",
+   "Māori",
+   "New Zealand Sign Language"
+  ],
+  "area": 270467
+ },
+ {
+  "iso3": "NIC",
+  "name": "Nicaragua",
+  "official": "Republic of Nicaragua",
+  "capital": [
+   "Managua"
+  ],
+  "region": "Americas",
+  "subregion": "Central America",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 130373
+ },
+ {
+  "iso3": "PRK",
+  "name": "North Korea",
+  "official": "Democratic People's Republic of Korea",
+  "capital": [
+   "Pyongyang"
+  ],
+  "region": "Asia",
+  "subregion": "Eastern Asia",
+  "languages": [
+   "Korean"
+  ],
+  "area": 120538
+ },
+ {
+  "iso3": "OMN",
+  "name": "Oman",
+  "official": "Sultanate of Oman",
+  "capital": [
+   "Muscat"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Arabic"
+  ],
+  "area": 309500
+ },
+ {
+  "iso3": "PAK",
+  "name": "Pakistan",
+  "official": "Islamic Republic of Pakistan",
+  "capital": [
+   "Islamabad"
+  ],
+  "region": "Asia",
+  "subregion": "Southern Asia",
+  "languages": [
+   "English",
+   "Urdu"
+  ],
+  "area": 881912
+ },
+ {
+  "iso3": "PLW",
+  "name": "Palau",
+  "official": "Republic of Palau",
+  "capital": [
+   "Ngerulmud"
+  ],
+  "region": "Oceania",
+  "subregion": "Micronesia",
+  "languages": [
+   "English",
+   "Palauan"
+  ],
+  "area": 459
+ },
+ {
+  "iso3": "PAN",
+  "name": "Panama",
+  "official": "Republic of Panama",
+  "capital": [
+   "Panama City"
+  ],
+  "region": "Americas",
+  "subregion": "Central America",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 75417
+ },
+ {
+  "iso3": "PNG",
+  "name": "Papua New Guinea",
+  "official": "Independent State of Papua New Guinea",
+  "capital": [
+   "Port Moresby"
+  ],
+  "region": "Oceania",
+  "subregion": "Melanesia",
+  "languages": [
+   "English",
+   "Hiri Motu",
+   "Tok Pisin"
+  ],
+  "area": 462840
+ },
+ {
+  "iso3": "PRY",
+  "name": "Paraguay",
+  "official": "Republic of Paraguay",
+  "capital": [
+   "Asunción"
+  ],
+  "region": "Americas",
+  "subregion": "South America",
+  "languages": [
+   "Guaraní",
+   "Spanish"
+  ],
+  "area": 406752
+ },
+ {
+  "iso3": "PER",
+  "name": "Peru",
+  "official": "Republic of Peru",
+  "capital": [
+   "Lima"
+  ],
+  "region": "Americas",
+  "subregion": "South America",
+  "languages": [
+   "Aymara",
+   "Quechua",
+   "Spanish"
+  ],
+  "area": 1285216
+ },
+ {
+  "iso3": "PHL",
+  "name": "Philippines",
+  "official": "Republic of the Philippines",
+  "capital": [
+   "Manila"
+  ],
+  "region": "Asia",
+  "subregion": "South-Eastern Asia",
+  "languages": [
+   "English",
+   "Filipino"
+  ],
+  "area": 342353
+ },
+ {
+  "iso3": "QAT",
+  "name": "Qatar",
+  "official": "State of Qatar",
+  "capital": [
+   "Doha"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Arabic"
+  ],
+  "area": 11586
+ },
+ {
+  "iso3": "KNA",
+  "name": "Saint Kitts and Nevis",
+  "official": "Federation of Saint Christopher and Nevis",
+  "capital": [
+   "Basseterre"
+  ],
+  "region": "Americas",
+  "subregion": "Caribbean",
+  "languages": [
+   "English"
+  ],
+  "area": 261
+ },
+ {
+  "iso3": "LCA",
+  "name": "Saint Lucia",
+  "official": "Saint Lucia",
+  "capital": [
+   "Castries"
+  ],
+  "region": "Americas",
+  "subregion": "Caribbean",
+  "languages": [
+   "English"
+  ],
+  "area": 616
+ },
+ {
+  "iso3": "VCT",
+  "name": "Saint Vincent and the Grenadines",
+  "official": "Saint Vincent and the Grenadines",
+  "capital": [
+   "Kingstown"
+  ],
+  "region": "Americas",
+  "subregion": "Caribbean",
+  "languages": [
+   "English"
+  ],
+  "area": 389
+ },
+ {
+  "iso3": "WSM",
+  "name": "Samoa",
+  "official": "Independent State of Samoa",
+  "capital": [
+   "Apia"
+  ],
+  "region": "Oceania",
+  "subregion": "Polynesia",
+  "languages": [
+   "English",
+   "Samoan"
+  ],
+  "area": 2842
+ },
+ {
+  "iso3": "SAU",
+  "name": "Saudi Arabia",
+  "official": "Kingdom of Saudi Arabia",
+  "capital": [
+   "Riyadh"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Arabic"
+  ],
+  "area": 2149690
+ },
+ {
+  "iso3": "SGP",
+  "name": "Singapore",
+  "official": "Republic of Singapore",
+  "capital": [
+   "Singapore"
+  ],
+  "region": "Asia",
+  "subregion": "South-Eastern Asia",
+  "languages": [
+   "English",
+   "Malay",
+   "Tamil",
+   "Chinese"
+  ],
+  "area": 710
+ },
+ {
+  "iso3": "SLB",
+  "name": "Solomon Islands",
+  "official": "Solomon Islands",
+  "capital": [
+   "Honiara"
+  ],
+  "region": "Oceania",
+  "subregion": "Melanesia",
+  "languages": [
+   "English"
+  ],
+  "area": 28896
+ },
+ {
+  "iso3": "KOR",
+  "name": "South Korea",
+  "official": "Republic of Korea",
+  "capital": [
+   "Seoul"
+  ],
+  "region": "Asia",
+  "subregion": "Eastern Asia",
+  "languages": [
+   "Korean"
+  ],
+  "area": 100210
+ },
+ {
+  "iso3": "LKA",
+  "name": "Sri Lanka",
+  "official": "Democratic Socialist Republic of Sri Lanka",
+  "capital": [
+   "Colombo"
+  ],
+  "region": "Asia",
+  "subregion": "Southern Asia",
+  "languages": [
+   "Sinhala",
+   "Tamil"
+  ],
+  "area": 65610
+ },
+ {
+  "iso3": "SUR",
+  "name": "Suriname",
+  "official": "Republic of Suriname",
+  "capital": [
+   "Paramaribo"
+  ],
+  "region": "Americas",
+  "subregion": "South America",
+  "languages": [
+   "Dutch"
+  ],
+  "area": 163820
+ },
+ {
+  "iso3": "SYR",
+  "name": "Syria",
+  "official": "Syrian Arab Republic",
+  "capital": [
+   "Damascus"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Arabic"
+  ],
+  "area": 185180
+ },
+ {
+  "iso3": "TJK",
+  "name": "Tajikistan",
+  "official": "Republic of Tajikistan",
+  "capital": [
+   "Dushanbe"
+  ],
+  "region": "Asia",
+  "subregion": "Central Asia",
+  "languages": [
+   "Russian",
+   "Tajik"
+  ],
+  "area": 143100
+ },
+ {
+  "iso3": "THA",
+  "name": "Thailand",
+  "official": "Kingdom of Thailand",
+  "capital": [
+   "Bangkok"
+  ],
+  "region": "Asia",
+  "subregion": "South-Eastern Asia",
+  "languages": [
+   "Thai"
+  ],
+  "area": 513120
+ },
+ {
+  "iso3": "TLS",
+  "name": "Timor-Leste",
+  "official": "Democratic Republic of Timor-Leste",
+  "capital": [
+   "Dili"
+  ],
+  "region": "Asia",
+  "subregion": "South-Eastern Asia",
+  "languages": [
+   "Portuguese",
+   "Tetum"
+  ],
+  "area": 14874
+ },
+ {
+  "iso3": "TON",
+  "name": "Tonga",
+  "official": "Kingdom of Tonga",
+  "capital": [
+   "Nuku'alofa"
+  ],
+  "region": "Oceania",
+  "subregion": "Polynesia",
+  "languages": [
+   "English",
+   "Tongan"
+  ],
+  "area": 747
+ },
+ {
+  "iso3": "TTO",
+  "name": "Trinidad and Tobago",
+  "official": "Republic of Trinidad and Tobago",
+  "capital": [
+   "Port of Spain"
+  ],
+  "region": "Americas",
+  "subregion": "Caribbean",
+  "languages": [
+   "English"
+  ],
+  "area": 5130
+ },
+ {
+  "iso3": "TUR",
+  "name": "Türkiye",
+  "official": "Republic of Türkiye",
+  "capital": [
+   "Ankara"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Turkish"
+  ],
+  "area": 783562
+ },
+ {
+  "iso3": "TKM",
+  "name": "Turkmenistan",
+  "official": "Turkmenistan",
+  "capital": [
+   "Ashgabat"
+  ],
+  "region": "Asia",
+  "subregion": "Central Asia",
+  "languages": [
+   "Russian",
+   "Turkmen"
+  ],
+  "area": 488100
+ },
+ {
+  "iso3": "TUV",
+  "name": "Tuvalu",
+  "official": "Tuvalu",
+  "capital": [
+   "Funafuti"
+  ],
+  "region": "Oceania",
+  "subregion": "Polynesia",
+  "languages": [
+   "English",
+   "Tuvaluan"
+  ],
+  "area": 26
+ },
+ {
+  "iso3": "ARE",
+  "name": "United Arab Emirates",
+  "official": "United Arab Emirates",
+  "capital": [
+   "Abu Dhabi"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Arabic"
+  ],
+  "area": 83600
+ },
+ {
+  "iso3": "USA",
+  "name": "United States",
+  "official": "United States of America",
+  "capital": [
+   "Washington D.C."
+  ],
+  "region": "Americas",
+  "subregion": "North America",
+  "languages": [
+   "English"
+  ],
+  "area": 9372610
+ },
+ {
+  "iso3": "URY",
+  "name": "Uruguay",
+  "official": "Oriental Republic of Uruguay",
+  "capital": [
+   "Montevideo"
+  ],
+  "region": "Americas",
+  "subregion": "South America",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 181034
+ },
+ {
+  "iso3": "UZB",
+  "name": "Uzbekistan",
+  "official": "Republic of Uzbekistan",
+  "capital": [
+   "Tashkent"
+  ],
+  "region": "Asia",
+  "subregion": "Central Asia",
+  "languages": [
+   "Russian",
+   "Uzbek"
+  ],
+  "area": 447400
+ },
+ {
+  "iso3": "VUT",
+  "name": "Vanuatu",
+  "official": "Republic of Vanuatu",
+  "capital": [
+   "Port Vila"
+  ],
+  "region": "Oceania",
+  "subregion": "Melanesia",
+  "languages": [
+   "Bislama",
+   "English",
+   "French"
+  ],
+  "area": 12189
+ },
+ {
+  "iso3": "VEN",
+  "name": "Venezuela",
+  "official": "Bolivarian Republic of Venezuela",
+  "capital": [
+   "Caracas"
+  ],
+  "region": "Americas",
+  "subregion": "South America",
+  "languages": [
+   "Spanish"
+  ],
+  "area": 916445
+ },
+ {
+  "iso3": "VNM",
+  "name": "Vietnam",
+  "official": "Socialist Republic of Vietnam",
+  "capital": [
+   "Hanoi"
+  ],
+  "region": "Asia",
+  "subregion": "South-Eastern Asia",
+  "languages": [
+   "Vietnamese"
+  ],
+  "area": 331212
+ },
+ {
+  "iso3": "YEM",
+  "name": "Yemen",
+  "official": "Republic of Yemen",
+  "capital": [
+   "Sana'a"
+  ],
+  "region": "Asia",
+  "subregion": "Western Asia",
+  "languages": [
+   "Arabic"
+  ],
+  "area": 527968
+ }
+]
