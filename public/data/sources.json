@@ -1,0 +1,40 @@
+{
+  "generatedAt": "2026-09-09T01:00:56.844Z",
+  "sources": {
+    "countries": {
+      "name": "mledoze/countries",
+      "url": "https://raw.githubusercontent.com/mledoze/countries/master/countries.json",
+      "license": "ODbL-1.0"
+    },
+    "flags": {
+      "name": "mledoze/countries flag SVGs",
+      "url": "https://raw.githubusercontent.com/mledoze/countries/master/data/<cca3>.svg",
+      "license": "ODbL-1.0 (flag artwork public domain / see repository)"
+    },
+    "geometry": {
+      "name": "world-atlas countries-50m (Natural Earth 1:50m)",
+      "url": "https://www.npmjs.com/package/world-atlas",
+      "license": "ISC (code) / Natural Earth public domain (data)"
+    },
+    "population": {
+      "name": "World Bank population (datasets/population mirror)",
+      "url": "https://raw.githubusercontent.com/datasets/population/main/data/population.csv",
+      "license": "CC-BY-4.0",
+      "latestYear": 2024,
+      "earliestYearUsed": 2024
+    },
+    "wikipedia": {
+      "name": "English Wikipedia / Wikimedia Commons",
+      "url": "https://en.wikipedia.org/w/api.php",
+      "license": "text CC BY-SA 4.0; images licensed per file",
+      "note": "fetched in the visitor's browser at runtime (src/data/images.ts)"
+    }
+  },
+  "counts": {
+    "countries": 250,
+    "withContent": 28,
+    "withPopulation": 216,
+    "geometries": 241,
+    "flags": 250
+  }
+}
