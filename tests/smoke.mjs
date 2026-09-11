@@ -6,6 +6,16 @@ import { mkdirSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 
+// This sandbox routes HTTPS through an agent proxy; localhost must bypass it or the
+// readiness poll hangs. Also never let the run wedge forever.
+process.env.NO_PROXY = [process.env.NO_PROXY, 'localhost,127.0.0.1,::1'].filter(Boolean).join(',');
+process.env.no_proxy = process.env.NO_PROXY;
+const watchdog = setTimeout(() => {
+  console.error('✖ smoke test exceeded 240s — aborting');
+  process.exit(1);
+}, 240000);
+watchdog.unref();
+
 /** Pick a free port so a stray dev server never blocks the run. */
 function freePort() {
   return new Promise((res, rej) => {
@@ -43,12 +53,25 @@ mkdirSync(OUT, { recursive: true });
 
 const preview = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { stdio: 'pipe' });
 let previewLog = '';
-await new Promise((res, rej) => {
-  preview.stdout.on('data', (d) => { previewLog += d; if (String(d).includes('http://')) res(); });
-  preview.stderr.on('data', (d) => { previewLog += d; });
-  preview.on('exit', (c) => rej(new Error(`preview exited ${c}:\n${previewLog}`)));
-  setTimeout(() => rej(new Error(`preview timeout:\n${previewLog}`)), 20000);
-});
+preview.stdout.on('data', (d) => { previewLog += d; });
+preview.stderr.on('data', (d) => { previewLog += d; });
+
+// Poll the port rather than parsing startup logs, whose wording varies between Vite versions.
+await (async () => {
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(`http://127.0.0.1:${PORT}/`, { signal: AbortSignal.timeout(2000) });
+      if (r.ok) return;
+    } catch {
+      /* not up yet */
+    }
+    if (preview.exitCode !== null) throw new Error(`preview exited ${preview.exitCode}:\n${previewLog}`);
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  throw new Error(`preview never became ready on port ${PORT}:\n${previewLog}`);
+})();
+console.log(`preview ready on ${PORT}`);
 
 const executablePath = findChromium();
 console.log(`chromium: ${executablePath ?? 'playwright default'}`);
