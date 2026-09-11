@@ -142,6 +142,68 @@ try {
   check(/Japan/.test(t2) && /Tokyo/.test(t2), 'search "Jap" → Japan / Tokyo');
   await page.screenshot({ path: `${OUT}03-japan.png` });
 
+  // --- themes ---------------------------------------------------------------------------------
+  const THEME_IDS = ['classroom', 'chalkboard', 'atlas', 'blueprint', 'fieldnotes', 'nightstudy'];
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+
+  const toggle = page.locator('#header [data-gp-theme-toggle]');
+  check((await toggle.count()) === 1, 'header has exactly one theme toggle');
+
+  const rasters = new Map();
+  for (const id of THEME_IDS) {
+    await toggle.click();
+    await page.waitForTimeout(250);
+    const row = page.locator(`[data-gp-theme="${id}"]`);
+    check((await row.count()) > 0, `picker offers "${id}"`);
+    await row.first().click();
+    // Phase 2 of the switch re-rasters the map on a later frame.
+    await page.waitForTimeout(2200);
+
+    const applied = await page.evaluate(() => document.documentElement.dataset.theme);
+    check(applied === id, `data-theme is "${id}" after picking it`);
+    rasters.set(id, await page.screenshot({ clip }));
+    await page.screenshot({ path: `${OUT}10-theme-${id}.png` });
+  }
+
+  // Each theme must actually repaint the globe, not just flip the CSS.
+  for (let i = 1; i < THEME_IDS.length; i++) {
+    const a = THEME_IDS[i - 1];
+    const b = THEME_IDS[i];
+    check(!rasters.get(a).equals(rasters.get(b)), `globe raster differs between "${a}" and "${b}"`);
+  }
+
+  // Picking must survive a theme switch: the pick index is never rebuilt, so it should.
+  await page.evaluate(() => window.__gp?.bus.emit('globe:select', { iso3: 'JPN' }));
+  await page.waitForTimeout(700);
+  check(/Japan/.test(await page.locator('#panel').innerText()), 'country select still works after theme switches');
+  await page.keyboard.press('Escape');
+
+  // The choice survives a reload, and is applied before first paint (no flash of default).
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  const atFirstPaint = await page.evaluate(() => document.documentElement.dataset.theme);
+  check(atFirstPaint === 'nightstudy', `theme is already "${atFirstPaint}" at domcontentloaded (no flash)`);
+  await page.waitForTimeout(3000);
+  check((await page.evaluate(() => document.documentElement.dataset.theme)) === 'nightstudy', 'theme persists across reload');
+
+  // Keyboard path: open, move, select, and focus comes back to the button.
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  check((await toggle.getAttribute('aria-expanded')) === 'true', 'Enter opens the picker');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1200);
+  const afterKeys = await page.evaluate(() => document.documentElement.dataset.theme);
+  check(THEME_IDS.includes(afterKeys), `keyboard selection picked a theme ("${afterKeys}")`);
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(250);
+  check((await toggle.getAttribute('aria-expanded')) === 'false', 'Escape closes the picker');
+  check(await toggle.evaluate((el) => el === document.activeElement), 'Escape returns focus to the toggle');
+
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await mobile.route(/wikipedia\.org|wikimedia\.org/, (r) => r.abort());
   await mobile.goto(`http://localhost:${PORT}/#BRA`, { waitUntil: 'networkidle' });

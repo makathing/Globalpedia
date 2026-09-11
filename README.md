@@ -15,13 +15,37 @@ npm run dev          # http://localhost:5173
 `npm run build` regenerates the data, type-checks and bundles to `dist/`.
 `npm test` runs the unit tests; `npm run smoke` drives the built site in headless Chromium.
 
+## Themes
+
+Six looks, each restyling the page and the globe together, chosen from the swatch
+picker in the header:
+
+| Theme | The wall | The globe |
+|---|---|---|
+| Classroom | Cream paper, blue rules, red margin | Pastel countries, brass ring, walnut base |
+| Chalkboard | Slate-green board, faint chalk grid | Chalk outlines and dusty fills, pewter stand |
+| Vintage Atlas | Aged parchment, sepia rules | Ochre and umber, antique brass, mahogany |
+| Blueprint | Indigo drafting paper, white grid | White line-work over a near-black ocean |
+| Field Notebook | Pale mint graph paper | Botanical greens, tan and clay, kraft stand |
+| Night Study | Dark navy paper, lamp vignette | Deep teal ocean, dim jewel fills, warm brass |
+
+The choice is saved to `localStorage` and applied before first paint, so there is no
+flash on reload. With nothing saved, the app opens in Classroom, or Night Study when
+the system asks for dark.
+
+`src/core/themes.ts` is the single source of truth: it carries both the page's custom
+properties and the globe's colors, so the two halves cannot drift. Adding a theme means
+adding one entry there. Every palette must be exactly eight fills — the globe hands out
+indices into it, so a swap keeps each country's color slot and the map retints rather
+than reshuffles. `npm test` enforces that, along with contrast floors for text and labels.
+
 ## How it is put together
 
 ```
-src/core/     shared types + the event bus (the only link between modules)
+src/core/     shared types, the event bus, and the theme table
 src/globe/    Three.js globe: canvas-rasterized political texture, brass meridian & stand,
               country labels, pixel-exact picking, fly-to
-src/ui/       notebook-paper page, header + search, the index-card info panel, lightbox
+src/ui/       the paper page, header + search + theme picker, info panel, lightbox
 src/data/     loaders for public/data/*.json and the runtime Wikipedia photo client
 scripts/      build-data.mjs (Natural Earth via world-atlas + mledoze/countries + World Bank)
 content/      the articles: content/countries/<ISO3>.json, one per country, see STYLE.md
