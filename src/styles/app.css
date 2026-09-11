@@ -75,7 +75,9 @@
      carry them: the near-white mat behind a flag, and the near-black scrim
      behind a photo in the lightbox. */
   --gp-flag-mat: color-mix(in srgb, #ffffff 88%, var(--gp-paper));
-  --gp-scrim: rgba(var(--gp-shadow-rgb), 0.9);
+  /* Mostly black with a little of the theme's shadow hue mixed in — at full
+     strength the shadow triple alone is far too light to sit behind a photo. */
+  --gp-scrim: color-mix(in srgb, rgba(var(--gp-shadow-rgb), 0.88) 45%, rgba(0, 0, 0, 0.88));
 
   /* type */
   --gp-font-head: 'Fraunces', 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
