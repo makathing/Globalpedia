@@ -197,7 +197,7 @@ export function renderPanel(container: HTMLElement, bus: EventBus, options: Pane
       { class: `gp-tile gp-tile--fallback${big ? ' gp-tile--big' : ''}`, role: 'listitem' },
       el('img', { class: 'gp-tile__flag', src: record.flagSvg, alt: `Flag of ${record.name}`, loading: 'lazy', decoding: 'async', width: '96', height: '64' }),
       i === 0 || big
-        ? el('p', { class: 'gp-tile__note' }, svg(ICON_CAMERA), el('span', { text: 'Photos load from Wikipedia when you’re online' }))
+        ? el('p', { class: 'gp-tile__note' }, svg(ICON_CAMERA), el('span', { text: 'Photos load from Wikipedia' }))
         : el('span', { class: 'gp-visually-hidden', text: 'No photo available' }),
     );
   }

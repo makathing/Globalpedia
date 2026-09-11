@@ -2,20 +2,66 @@
 // Run: npm run build && npm run smoke
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { createServer } from 'node:net';
 
-const PORT = 4173;
+/** Pick a free port so a stray dev server never blocks the run. */
+function freePort() {
+  return new Promise((res, rej) => {
+    const srv = createServer();
+    srv.on('error', rej);
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address();
+      srv.close(() => res(port));
+    });
+  });
+}
+
+/**
+ * Use whatever Chromium this machine already has. The sandbox ships a pinned build under
+ * PLAYWRIGHT_BROWSERS_PATH that may not match the npm playwright version; on CI the
+ * bundled download is correct, so fall back to Playwright's own resolution.
+ */
+function findChromium() {
+  if (process.env.CHROMIUM_PATH) return process.env.CHROMIUM_PATH;
+  const root = process.env.PLAYWRIGHT_BROWSERS_PATH;
+  if (!root || !existsSync(root)) return undefined;
+  const dirs = readdirSync(root)
+    .filter((d) => /^chromium-\d+$/.test(d))
+    .sort((a, b) => Number(b.split('-')[1]) - Number(a.split('-')[1]));
+  for (const d of dirs) {
+    const exe = join(root, d, 'chrome-linux', 'chrome');
+    if (existsSync(exe)) return exe;
+  }
+  return undefined;
+}
+
+const PORT = await freePort();
 const OUT = new URL('../scratch/smoke/', import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
 
 const preview = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { stdio: 'pipe' });
+let previewLog = '';
 await new Promise((res, rej) => {
-  preview.stdout.on('data', (d) => { if (String(d).includes('http://')) res(); });
-  preview.on('exit', (c) => rej(new Error(`preview exited ${c}`)));
-  setTimeout(() => rej(new Error('preview timeout')), 20000);
+  preview.stdout.on('data', (d) => { previewLog += d; if (String(d).includes('http://')) res(); });
+  preview.stderr.on('data', (d) => { previewLog += d; });
+  preview.on('exit', (c) => rej(new Error(`preview exited ${c}:\n${previewLog}`)));
+  setTimeout(() => rej(new Error(`preview timeout:\n${previewLog}`)), 20000);
 });
 
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const executablePath = findChromium();
+console.log(`chromium: ${executablePath ?? 'playwright default'}`);
+const browser = await chromium.launch({
+  executablePath,
+  args: [
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+    '--ignore-gpu-blocklist',
+    '--no-sandbox',
+  ],
+});
 const fails = [];
 const check = (ok, msg) => { console.log(`${ok ? '✔' : '✖'} ${msg}`); if (!ok) fails.push(msg); };
 try {
@@ -31,17 +77,25 @@ try {
   await page.waitForTimeout(2500);
   await page.screenshot({ path: `${OUT}01-home.png` });
 
-  // Globe canvas has non-transparent pixels.
-  const painted = await page.evaluate(() => {
-    const c = document.querySelector('#globe canvas');
-    const gl = c.getContext('webgl2') || c.getContext('webgl');
-    if (!gl) return -1;
-    const px = new Uint8Array(4 * 64 * 64);
-    gl.readPixels((c.width / 2) | 0, (c.height / 2) | 0, 64, 64, gl.RGBA, gl.UNSIGNED_BYTE, px);
-    let n = 0; for (let i = 3; i < px.length; i += 4) if (px[i] > 0) n++;
-    return n;
-  });
-  check(painted !== 0, `globe canvas painted (centre sample alpha count: ${painted}; -1 = context not readable, tolerated)`);
+  // Prove the globe actually renders: reading the WebGL buffer directly is unreliable
+  // (it is cleared after compositing unless preserveDrawingBuffer is on), so compare
+  // screenshots of the globe region before and after rotating to another continent.
+  const globeBox = await page.locator('#globe').boundingBox();
+  const clip = {
+    x: globeBox.x + globeBox.width * 0.2,
+    y: globeBox.y + globeBox.height * 0.2,
+    width: Math.floor(globeBox.width * 0.5),
+    height: Math.floor(globeBox.height * 0.5),
+  };
+  const before = await page.screenshot({ clip });
+  // A blank paper region compresses to almost nothing; a drawn globe does not.
+  check(before.length > 20000, `globe region has detail (${before.length} bytes of PNG)`);
+
+  await page.evaluate(() => window.__gp?.bus.emit('ui:flyTo', { iso3: 'AUS' }));
+  await page.waitForTimeout(1800);
+  const after = await page.screenshot({ clip });
+  check(!before.equals(after), 'globe region changes after flying to Australia');
+  await page.screenshot({ path: `${OUT}01b-australia.png` });
 
   // Select via the bus (exposed for tests) and via search.
   await page.evaluate(() => window.__gp?.bus.emit('globe:select', { iso3: 'FRA' }));

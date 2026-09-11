@@ -220,8 +220,7 @@ export function renderHeader(container: HTMLElement, bus: EventBus): HeaderHandl
     }),
   );
 
-  const offReady = bus.on('data:ready', ({ countries }) => setCountries(countries));
-  disposers.push(offReady);
+  // The countries map arrives via createUI(), which owns it — see src/ui/index.ts.
 
   function setCountries(countries: Record<string, CountryRecord>): void {
     entries = Object.values(countries).map((c) => ({

@@ -50,13 +50,16 @@ export function createUI(root: UIRoot, bus: EventBus): UIHandle {
   const hint = createHint(root.stage, bus);
   const loading = createLoading(root.stage);
 
-  const offReady = bus.on('data:ready', ({ countries: map }) => {
+  // Single owner of the countries map: whichever path delivers it (the bus or an
+  // explicit setCountries call), the header search index is fed the same way.
+  const applyCountries = (map: Record<string, CountryRecord>): void => {
     countries = map;
-  });
+    header.setCountries(map);
+  };
+  const offReady = bus.on('data:ready', ({ countries: map }) => applyCountries(map));
 
-  // Open the panel straight from the bus when we already know the record.
-  // main.ts may also call showCountry() — the second call for the same iso3 is cheap and
-  // preserves the photo state.
+  // The panel opens itself from the bus; main.ts must not also call showCountry()
+  // for the same event or the panel renders twice.
   const offSelect = bus.on('globe:select', ({ iso3 }) => {
     const record = countries[iso3];
     if (record) panel.show(record);
@@ -67,10 +70,7 @@ export function createUI(root: UIRoot, bus: EventBus): UIHandle {
     setImages: (iso3, images) => panel.setImages(iso3, images),
     setImagesFailed: (iso3) => panel.setImagesFailed(iso3),
     close: () => panel.close(),
-    setCountries(map) {
-      countries = map;
-      header.setCountries(map);
-    },
+    setCountries: applyCountries,
     setLoading: (on, message) => loading.set(on, message),
     dispose() {
       offReady();
