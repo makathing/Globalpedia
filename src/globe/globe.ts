@@ -37,6 +37,7 @@ import {
   type Material,
   type Object3D,
 } from 'three';
+import type { GlobeTheme } from '../core/themes';
 import { TILT } from './math';
 
 export const GLOBE_RADIUS = 1;
@@ -65,22 +66,33 @@ export interface GlobeScene {
   standRig: Group;
   sphere: Mesh<SphereGeometry, MeshStandardMaterial>;
   mapTexture: CanvasTexture;
+  /**
+   * The one material shared by the ring, both pole pins, both finials, the base
+   * band, the collar and the stem — `brassMat.color.set(...)` recolours all of them.
+   */
+  brassMat: MeshStandardMaterial;
+  /** The base disc. */
+  woodMat: MeshStandardMaterial;
+  keyLight: DirectionalLight;
+  hemiLight: HemisphereLight;
+  ambientLight: AmbientLight;
   /** Resize renderer + camera to the container's current box. */
   resize(): void;
   dispose(): void;
 }
 
-const BRASS = 0xb8925a;
-const WOOD = 0x4a2e1f;
-
-function brass(): MeshStandardMaterial {
-  return new MeshStandardMaterial({ color: BRASS, metalness: 0.85, roughness: 0.32 });
+/** The stand's mutable parts, handed back so a theme switch can recolour in place. */
+interface Stand {
+  group: Group;
+  brassMat: MeshStandardMaterial;
+  woodMat: MeshStandardMaterial;
+  keyLight: DirectionalLight;
 }
 
 /** Build the semi-meridian ring, pole caps, curved stem and wooden base. */
-function buildStand(): Group {
+function buildStand(theme: GlobeTheme): Stand {
   const g = new Group();
-  const brassMat = brass();
+  const brassMat = new MeshStandardMaterial({ color: theme.brass, metalness: 0.85, roughness: 0.32 });
 
   // Semi-meridian: a half torus in the XY plane from the south pole, round +X, to the north pole,
   // then swung ~20° back (about Y) so it recedes behind the globe instead of lying flat on screen.
@@ -111,7 +123,7 @@ function buildStand(): Group {
   const base = new Group();
   base.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), baseUp);
   base.position.copy(baseCenter);
-  const woodMat = new MeshStandardMaterial({ color: WOOD, roughness: 0.6, metalness: 0.05 });
+  const woodMat = new MeshStandardMaterial({ color: theme.wood, roughness: 0.6, metalness: 0.05 });
   const disc = new Mesh(new CylinderGeometry(0.44, 0.5, 0.11, 64), woodMat);
   base.add(disc);
   const band = new Mesh(new TorusGeometry(0.455, 0.011, 10, 96), brassMat);
@@ -133,21 +145,24 @@ function buildStand(): Group {
   g.add(stem);
 
   // Key light lives in the stand rig so shading stays put while the globe spins.
-  const key = new DirectionalLight(0xfff3e2, 2.4);
-  key.position.set(-2.5, 3.5, 4.5);
-  g.add(key);
-  g.add(key.target);
+  const keyLight = new DirectionalLight(theme.keyLight.color, theme.keyLight.intensity);
+  keyLight.position.set(-2.5, 3.5, 4.5);
+  g.add(keyLight);
+  g.add(keyLight.target);
 
-  return g;
+  return { group: g, brassMat, woodMat, keyLight };
 }
 
 /**
  * @param makeMap builds the equirectangular map canvas; receives the GPU's max texture size so the
  *                caller can pick 8192 vs 4096 before rasterising.
+ * @param theme   colours for the initial paint. Everything a theme touches later (both materials
+ *                and all three lights) is returned on the GlobeScene so it can be mutated in place.
  */
 export function createGlobeScene(
   container: HTMLElement,
   makeMap: (maxTextureSize: number) => HTMLCanvasElement,
+  theme: GlobeTheme,
 ): GlobeScene {
   const renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
   const mapCanvas = makeMap(renderer.capabilities.maxTextureSize);
@@ -174,18 +189,21 @@ export function createGlobeScene(
   const sphere = new Mesh(
     new SphereGeometry(GLOBE_RADIUS, 128, 96),
     // Varnished paper, not plastic: mid roughness and next to no metalness.
-    new MeshStandardMaterial({ map: mapTexture, roughness: 0.55, metalness: 0.02 }),
+    // `color` multiplies the map texture; 0xffffff means "no tint".
+    new MeshStandardMaterial({ map: mapTexture, color: theme.sphereTint, roughness: 0.55, metalness: 0.02 }),
   );
   rig.add(sphere);
 
-  const standRig = buildStand();
+  const stand = buildStand(theme);
+  const standRig = stand.group;
   rig.add(standRig);
 
   // Fill: warm sky / dusty ground hemisphere along the screen-up direction, plus a whisper of ambient.
-  const hemi = new HemisphereLight(0xfff9ef, 0x9a8b7a, 1.1);
-  hemi.position.copy(STAND_UP);
-  standRig.add(hemi);
-  scene.add(new AmbientLight(0xffffff, 0.25));
+  const hemiLight = new HemisphereLight(theme.hemiLight.sky, theme.hemiLight.ground, theme.hemiLight.intensity);
+  hemiLight.position.copy(STAND_UP);
+  standRig.add(hemiLight);
+  const ambientLight = new AmbientLight(0xffffff, theme.ambient);
+  scene.add(ambientLight);
 
   function resize(): void {
     const w = Math.max(1, container.clientWidth);
@@ -210,5 +228,20 @@ export function createGlobeScene(
     renderer.domElement.remove();
   }
 
-  return { renderer, scene, camera, rig, standRig, sphere, mapTexture, resize, dispose };
+  return {
+    renderer,
+    scene,
+    camera,
+    rig,
+    standRig,
+    sphere,
+    mapTexture,
+    brassMat: stand.brassMat,
+    woodMat: stand.woodMat,
+    keyLight: stand.keyLight,
+    hemiLight,
+    ambientLight,
+    resize,
+    dispose,
+  };
 }

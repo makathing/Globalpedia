@@ -6,6 +6,8 @@ import type { EventBus } from '../core/events';
 import type { CountryRecord } from '../core/types';
 import { el, clear, svg, on } from './dom';
 import { GLOBE_MARK, ICON_SEARCH } from './icons';
+import { createThemeToggle } from './theme-toggle';
+import type { ThemeController } from './theme';
 
 interface SearchEntry {
   iso3: string;
@@ -25,6 +27,11 @@ export interface HeaderHandle {
   dispose(): void;
 }
 
+export interface HeaderOptions {
+  /** Drives the theme picker in the header's right slot. Owned by createUI(). */
+  theme: ThemeController;
+}
+
 const MAX_RESULTS = 8;
 
 function score(entry: SearchEntry, q: string): number {
@@ -39,7 +46,7 @@ function score(entry: SearchEntry, q: string): number {
   return -1;
 }
 
-export function renderHeader(container: HTMLElement, bus: EventBus): HeaderHandle {
+export function renderHeader(container: HTMLElement, bus: EventBus, options: HeaderOptions): HeaderHandle {
   container.classList.add('gp-header');
   clear(container);
 
@@ -86,7 +93,14 @@ export function renderHeader(container: HTMLElement, bus: EventBus): HeaderHandl
     listbox,
   );
 
-  container.append(brand, search);
+  // --- Theme picker ----------------------------------------------------
+  // Third child of a space-between header: brand left, search centre, picker
+  // right. Below 720px the header wraps and .gp-search takes the whole second
+  // row, so .gp-theme carries an explicit order to stay up beside the brand.
+  const themeToggle = createThemeToggle(bus, options.theme);
+  disposers.push(() => themeToggle.dispose());
+
+  container.append(brand, search, themeToggle.element);
 
   function openList(): void {
     listbox.hidden = false;

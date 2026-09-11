@@ -56,6 +56,28 @@ export const ICON_EXTERNAL = `
   <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
 
+/**
+ * Theme picker: a fan of three colored pencils. Like GLOBE_MARK it is painted
+ * from the theme tokens, so the icon restyles itself along with the page.
+ */
+export const ICON_THEME = `
+<svg viewBox="0 0 24 24" width="22" height="22" xmlns="http://www.w3.org/2000/svg">
+  <g stroke="var(--gp-ink)" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round">
+    <g transform="translate(12 21) rotate(-20)">
+      <path d="M-2.4 -17h4.8v12.2l-2.4 4-2.4-4z" fill="var(--gp-blue)"/>
+      <path d="M-2.4 -4.8h4.8" fill="none"/>
+    </g>
+    <g transform="translate(12 21) rotate(20)">
+      <path d="M-2.4 -17h4.8v12.2l-2.4 4-2.4-4z" fill="var(--gp-land)"/>
+      <path d="M-2.4 -4.8h4.8" fill="none"/>
+    </g>
+    <g transform="translate(12 21)">
+      <path d="M-2.4 -18.5h4.8v13.7l-2.4 4-2.4-4z" fill="var(--gp-accent)"/>
+      <path d="M-2.4 -4.8h4.8" fill="none"/>
+    </g>
+  </g>
+</svg>`;
+
 export const ICON_CAMERA = `
 <svg viewBox="0 0 24 24" width="22" height="22" xmlns="http://www.w3.org/2000/svg">
   <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7H8l1.5-2h5L16 7h2.5A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>

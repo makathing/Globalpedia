@@ -3,6 +3,7 @@
  * slightly larger sphere, redrawn only when the highlighted countries change.
  */
 import { CanvasTexture, Mesh, MeshBasicMaterial, SphereGeometry, SRGBColorSpace } from 'three';
+import type { GlobeTheme } from '../core/themes';
 import type { GlobeTextures } from './texture';
 import { traceGeometry } from './texture';
 
@@ -10,10 +11,13 @@ export interface HighlightLayer {
   mesh: Mesh<SphereGeometry, MeshBasicMaterial>;
   /** Returns true when anything was redrawn. */
   set(hover: string | null, selected: string | null): boolean;
+  /** Adopt another theme's highlight colours and repaint the current selection. */
+  restyle(theme: GlobeTheme): void;
   dispose(): void;
 }
 
-export function createHighlightLayer(textures: GlobeTextures, width = 2048): HighlightLayer {
+export function createHighlightLayer(textures: GlobeTextures, theme: GlobeTheme, width = 2048): HighlightLayer {
+  let colors = theme;
   const height = width / 2;
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -49,21 +53,32 @@ export function createHighlightLayer(textures: GlobeTextures, width = 2048): Hig
     ctx.stroke();
   }
 
+  /** Unconditional repaint of the current hover/selection in the current colours. */
+  function repaint(): void {
+    ctx.clearRect(0, 0, width, height);
+    if (curHover && curHover !== curSelected) {
+      paint(curHover, colors.highlightHoverFill, colors.highlightHoverLine, 1.6);
+    }
+    if (curSelected) paint(curSelected, colors.highlightSelFill, colors.highlightSelLine, 2.4);
+    mesh.visible = Boolean(curHover || curSelected);
+    texture.needsUpdate = true;
+  }
+
   function set(hover: string | null, selected: string | null): boolean {
     if (hover === curHover && selected === curSelected) return false;
     curHover = hover;
     curSelected = selected;
-    ctx.clearRect(0, 0, width, height);
-    if (hover && hover !== selected) paint(hover, 'rgba(255, 176, 80, 0.30)', 'rgba(160, 70, 20, 0.65)', 1.6);
-    if (selected) paint(selected, 'rgba(240, 130, 45, 0.48)', 'rgba(150, 60, 15, 0.95)', 2.4);
-    mesh.visible = Boolean(hover || selected);
-    texture.needsUpdate = true;
+    repaint();
     return true;
   }
 
   return {
     mesh,
     set,
+    restyle(next) {
+      colors = next;
+      repaint(); // bypasses set()'s unchanged-input early return
+    },
     dispose() {
       texture.dispose();
       mesh.geometry.dispose();

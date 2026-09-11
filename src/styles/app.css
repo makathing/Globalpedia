@@ -7,7 +7,16 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Nunito:wght@400;600;700&display=swap');
 
-/* ---------- Tokens (light = default) --------------------------------- */
+/* ---------- Tokens (Classroom = the no-JS fallback) -------------------
+   src/core/themes.ts is the source of truth for all six themes; src/ui/theme.ts
+   applies the chosen theme's `css` map inline on <html> at runtime. The values
+   below are the Classroom entry, duplicated here so the page is correct before
+   the module loads and with JavaScript disabled.
+
+   --gp-margin-x / --gp-gutter / --gp-panel-w are deliberately NOT part of any
+   theme: they are responsive (see the media queries at the bottom of this file)
+   and an inline value on <html> would outrank them.
+   ---------------------------------------------------------------------- */
 :root {
   color-scheme: light;
 
@@ -15,11 +24,23 @@
   --gp-paper: #fbf8f1;
   --gp-paper-2: #f4efe3;
   --gp-rule: rgba(72, 132, 196, 0.13);          /* blue notebook rules */
+  --gp-rule-faint: rgba(72, 132, 196, 0.07);    /* fine grid under the rules */
   --gp-margin: rgba(214, 92, 104, 0.38);        /* red margin line */
   --gp-rule-gap: 30px;
   --gp-margin-x: clamp(48px, 7vw, 104px);
   --gp-grain-opacity: 0.55;
   --gp-vignette: rgba(70, 50, 30, 0.10);
+  /* The wall's structure: vignette + red margin line + blue rules. */
+  --gp-paper-image:
+    radial-gradient(ellipse at 50% 45%, transparent 55%, var(--gp-vignette) 100%),
+    linear-gradient(to right, transparent calc(var(--gp-margin-x) - 1px), var(--gp-margin) calc(var(--gp-margin-x) - 1px), var(--gp-margin) calc(var(--gp-margin-x) + 1px), transparent calc(var(--gp-margin-x) + 1px)),
+    repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--gp-rule-gap) - 1px), var(--gp-rule) calc(var(--gp-rule-gap) - 1px), var(--gp-rule) var(--gp-rule-gap));
+  --gp-grain-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.45  0 0 0 0 0.40  0 0 0 0 0.33  0 0 0 0.09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --gp-grain-blend: multiply;
+
+  /* One "r, g, b" triple every shadow in the file is mixed from, so a dark
+     board gets black depth instead of warm-brown haze. */
+  --gp-shadow-rgb: 60, 40, 20;
 
   /* ink */
   --gp-ink: #2b241f;
@@ -41,7 +62,7 @@
   --gp-card: #fffdf8;
   --gp-card-rule: rgba(214, 92, 104, 0.35);
   --gp-card-line: rgba(72, 132, 196, 0.10);
-  --gp-card-shadow: 0 1px 2px rgba(60, 40, 20, 0.08), 0 10px 30px rgba(60, 40, 20, 0.16), 0 30px 60px -20px rgba(60, 40, 20, 0.22);
+  --gp-card-shadow: 0 1px 2px rgba(var(--gp-shadow-rgb), 0.10), 0 10px 30px rgba(var(--gp-shadow-rgb), 0.20), 0 30px 60px -20px rgba(var(--gp-shadow-rgb), 0.28);
   --gp-tape: rgba(255, 216, 128, 0.62);
   --gp-tape-edge: rgba(200, 150, 40, 0.28);
   --gp-chip: #f3ecdc;
@@ -49,6 +70,12 @@
   --gp-skeleton-a: #ede6d6;
   --gp-skeleton-b: #f7f2e7;
   --gp-tooltip: #fff8dc;
+
+  /* Derived, so they follow whichever theme is applied and no theme has to
+     carry them: the near-white mat behind a flag, and the near-black scrim
+     behind a photo in the lightbox. */
+  --gp-flag-mat: color-mix(in srgb, #ffffff 88%, var(--gp-paper));
+  --gp-scrim: rgba(var(--gp-shadow-rgb), 0.9);
 
   /* type */
   --gp-font-head: 'Fraunces', 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
@@ -64,44 +91,6 @@
   --gp-panel-w: min(420px, 40vw);
   --gp-gutter: 16px;
   --gp-radius: 10px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    color-scheme: dark;
-    --gp-paper: #1e1b18;
-    --gp-paper-2: #262220;
-    --gp-rule: rgba(120, 160, 200, 0.075);
-    --gp-margin: rgba(214, 92, 104, 0.22);
-    --gp-grain-opacity: 0.35;
-    --gp-vignette: rgba(0, 0, 0, 0.35);
-
-    --gp-ink: #ece4d8;
-    --gp-ink-2: #c3b8aa;
-    --gp-ink-3: #948a7e;
-    --gp-ink-faint: rgba(236, 228, 216, 0.14);
-
-    --gp-ocean: #4b7f99;
-    --gp-land: #cfb478;
-    --gp-brass: #d0a24a;
-    --gp-accent: #e0735c;
-    --gp-accent-ink: #f0937d;
-    --gp-blue: #6fb0d0;
-    --gp-blue-ink: #8cc4df;
-    --gp-focus: #8cc4df;
-
-    --gp-card: #2a2521;
-    --gp-card-rule: rgba(224, 115, 92, 0.45);
-    --gp-card-line: rgba(140, 180, 220, 0.07);
-    --gp-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.5), 0 30px 60px -20px rgba(0, 0, 0, 0.6);
-    --gp-tape: rgba(255, 210, 110, 0.35);
-    --gp-tape-edge: rgba(255, 210, 110, 0.18);
-    --gp-chip: #37312c;
-    --gp-chip-hover: #443c35;
-    --gp-skeleton-a: #332d28;
-    --gp-skeleton-b: #3d3630;
-    --gp-tooltip: #3a3128;
-  }
 }
 
 /* ---------- Reset-ish ------------------------------------------------ */
@@ -124,12 +113,10 @@ body {
   line-height: var(--gp-lh-body);
   color: var(--gp-ink);
   background-color: var(--gp-paper);
-  /* The wall: red margin line + blue rules + soft vignette */
-  background-image:
-    radial-gradient(ellipse at 50% 45%, transparent 55%, var(--gp-vignette) 100%),
-    linear-gradient(to right, transparent calc(var(--gp-margin-x) - 1px), var(--gp-margin) calc(var(--gp-margin-x) - 1px), var(--gp-margin) calc(var(--gp-margin-x) + 1px), transparent calc(var(--gp-margin-x) + 1px)),
-    repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--gp-rule-gap) - 1px), var(--gp-rule) calc(var(--gp-rule-gap) - 1px), var(--gp-rule) var(--gp-rule-gap));
-  background-attachment: fixed, fixed, fixed;
+  /* The wall. Each theme supplies its own layer list (ruled / grid / graph /
+     parchment) in --gp-paper-image; one `fixed` covers however many layers it has. */
+  background-image: var(--gp-paper-image);
+  background-attachment: fixed;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -143,15 +130,11 @@ body::before {
   z-index: 0;
   pointer-events: none;
   opacity: var(--gp-grain-opacity);
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.45  0 0 0 0 0.40  0 0 0 0 0.33  0 0 0 0.09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  /* The tint is baked into the noise SVG, so the image and the blend mode
+     travel together per theme (multiply on paper, screen on a dark board). */
+  mix-blend-mode: var(--gp-grain-blend);
+  background-image: var(--gp-grain-image);
   background-size: 240px 240px;
-}
-
-:root:not([data-theme='light']) body::before {
-  @media (prefers-color-scheme: dark) {
-    mix-blend-mode: screen;
-  }
 }
 
 img {
@@ -287,7 +270,7 @@ button {
   border-radius: 999px;
   background: var(--gp-card);
   border: 1.5px solid var(--gp-ink-faint);
-  box-shadow: inset 0 1px 2px rgba(60, 40, 20, 0.06), 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 1px 2px rgba(var(--gp-shadow-rgb), 0.06), 0 1px 0 var(--gp-ink-faint);
   color: var(--gp-ink-3);
   transition: border-color var(--gp-dur) var(--gp-ease), box-shadow var(--gp-dur) var(--gp-ease);
 }
@@ -378,6 +361,146 @@ button {
   color: var(--gp-ink-3);
   font-size: 14px;
   white-space: nowrap;
+}
+
+/* ---------- Theme picker --------------------------------------------- */
+/* Everything below inherits the theme tokens, so the card restyles itself with
+   the rest of the page. Only the swatch chips carry literal colors, and those
+   come from THEMES[].swatch via inline custom properties. */
+.gp-theme {
+  position: relative;
+  flex: none;
+}
+.gp-theme__btn {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1.5px solid var(--gp-ink-faint);
+  border-radius: 50%;
+  background: var(--gp-card);
+  color: var(--gp-ink-2);
+  cursor: pointer;
+  box-shadow: inset 0 1px 2px rgba(var(--gp-shadow-rgb), 0.06), 0 1px 0 var(--gp-ink-faint);
+  transition: border-color var(--gp-dur) var(--gp-ease), background var(--gp-dur) var(--gp-ease),
+    transform var(--gp-dur) var(--gp-ease);
+}
+.gp-theme__btn:hover {
+  background: var(--gp-chip);
+  border-color: color-mix(in srgb, var(--gp-ink) 22%, transparent);
+}
+.gp-theme__btn:active {
+  transform: translateY(1px);
+}
+.gp-theme__btn[aria-expanded='true'] {
+  background: var(--gp-chip-hover);
+  border-color: var(--gp-accent);
+  color: var(--gp-ink);
+}
+
+/* the popover: a small index card pinned under the button */
+.gp-theme__pop {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 45;
+  width: min(288px, calc(100vw - 24px));
+  padding: 10px 10px 8px;
+  background: var(--gp-card);
+  border: 1px solid var(--gp-ink-faint);
+  border-top: 3px solid var(--gp-card-rule);
+  border-radius: 4px 4px 12px 12px;
+  box-shadow: var(--gp-card-shadow);
+  /* the same faint card ruling the info panel uses */
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 27px, var(--gp-card-line) 27px, var(--gp-card-line) 28px);
+}
+/* a scrap of tape holding the card to the wall */
+.gp-theme__pop::before {
+  content: '';
+  position: absolute;
+  top: -9px;
+  right: 22px;
+  width: 54px;
+  height: 18px;
+  transform: rotate(-3deg);
+  background: var(--gp-tape);
+  border-left: 1px dashed var(--gp-tape-edge);
+  border-right: 1px dashed var(--gp-tape-edge);
+  pointer-events: none;
+}
+.gp-theme__heading {
+  margin: 0 0 6px;
+  padding: 0 6px;
+  font-family: var(--gp-font-head);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gp-ink-3);
+}
+.gp-theme__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.gp-theme__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 9px;
+  cursor: pointer;
+  line-height: 1.25;
+}
+.gp-theme__row:hover,
+.gp-theme__row:focus-visible {
+  background: var(--gp-chip);
+}
+.gp-theme__row[aria-checked='true'] {
+  background: var(--gp-chip);
+  box-shadow: inset 3px 0 0 var(--gp-accent);
+}
+.gp-theme__row:focus-visible {
+  outline: 3px solid var(--gp-focus);
+  outline-offset: -2px;
+}
+
+/* split circle: left half the paper, right half the globe */
+.gp-theme__chip {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, var(--gp-swatch-a) 0 50%, var(--gp-swatch-b) 50% 100%);
+  box-shadow: 0 0 0 1.5px var(--gp-ink-faint), 0 1px 2px rgba(var(--gp-shadow-rgb), 0.25);
+}
+.gp-theme__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.gp-theme__name {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--gp-ink);
+}
+.gp-theme__blurb {
+  font-size: 12px;
+  color: var(--gp-ink-3);
+  text-wrap: pretty;
+}
+.gp-theme__tick {
+  flex: none;
+  width: 16px;
+  color: var(--gp-accent-ink);
+  font-weight: 700;
+  text-align: center;
+  opacity: 0;
+}
+.gp-theme__row[aria-checked='true'] .gp-theme__tick {
+  opacity: 1;
 }
 
 /* ---------- Footer --------------------------------------------------- */
@@ -495,7 +618,7 @@ button {
   color: var(--gp-ink);
   border: 1px solid var(--gp-ink-faint);
   border-radius: 4px 10px 10px 4px;
-  box-shadow: 0 2px 6px rgba(50, 35, 15, 0.18);
+  box-shadow: 0 2px 6px rgba(var(--gp-shadow-rgb), 0.20);
   font-size: 14.5px;
   font-weight: 700;
   white-space: nowrap;
@@ -574,7 +697,7 @@ button {
   border-radius: 6px;
   background: var(--gp-paper-2);
   transform: rotate(-0.8deg);
-  box-shadow: 0 8px 20px rgba(60, 40, 20, 0.12);
+  box-shadow: 0 8px 20px rgba(var(--gp-shadow-rgb), 0.14);
   opacity: 0.9;
 }
 .gp-card__tape {
@@ -588,7 +711,7 @@ button {
   background: var(--gp-tape);
   border-left: 1px dashed var(--gp-tape-edge);
   border-right: 1px dashed var(--gp-tape-edge);
-  box-shadow: 0 1px 2px rgba(60, 40, 20, 0.12);
+  box-shadow: 0 1px 2px rgba(var(--gp-shadow-rgb), 0.14);
   backdrop-filter: saturate(1.2);
   pointer-events: none;
 }
@@ -608,7 +731,7 @@ button {
   padding: 22px 20px 12px 22px;
   background: var(--gp-card);
   border-bottom: 2px solid var(--gp-card-rule);
-  box-shadow: 0 6px 12px -8px rgba(60, 40, 20, 0.25);
+  box-shadow: 0 6px 12px -8px rgba(var(--gp-shadow-rgb), 0.28);
 }
 .gp-panel__handle {
   display: none;
@@ -643,9 +766,9 @@ button {
   flex: none;
   overflow: hidden;
   padding: 3px;
-  background: #fff;
+  background: var(--gp-flag-mat);
   border: 1px solid var(--gp-ink-faint);
-  box-shadow: 0 1px 3px rgba(60, 40, 20, 0.15);
+  box-shadow: 0 1px 3px rgba(var(--gp-shadow-rgb), 0.18);
   border-radius: 3px;
   transform: rotate(-1.5deg);
 }
@@ -870,7 +993,7 @@ button {
   border-radius: 8px;
   overflow: hidden;
   background: var(--gp-paper-2);
-  box-shadow: 0 1px 2px rgba(60, 40, 20, 0.12), 0 0 0 1px var(--gp-ink-faint);
+  box-shadow: 0 1px 2px rgba(var(--gp-shadow-rgb), 0.14), 0 0 0 1px var(--gp-ink-faint);
 }
 .gp-tile--big {
   width: 220px;
@@ -970,7 +1093,7 @@ button {
   height: 48px;
   object-fit: cover;
   border-radius: 2px;
-  box-shadow: 0 1px 3px rgba(60, 40, 20, 0.25);
+  box-shadow: 0 1px 3px rgba(var(--gp-shadow-rgb), 0.28);
   opacity: 0.9;
 }
 .gp-tile--fallback:not(.gp-tile--big) .gp-tile__flag {
@@ -1012,7 +1135,7 @@ button {
   display: grid;
 }
 .gp-lightbox::backdrop {
-  background: rgba(20, 14, 8, 0.86);
+  background: var(--gp-scrim);
   backdrop-filter: blur(6px);
 }
 .gp-lightbox__figure {
@@ -1148,6 +1271,18 @@ button {
   .gp-search__field {
     height: 40px;
   }
+  /* The header wraps here and the search takes the whole second row; keep the
+     toggle on the first row, opposite the brand, instead of below the search. */
+  .gp-theme {
+    order: 2;
+  }
+  .gp-theme__btn {
+    width: 38px;
+    height: 38px;
+  }
+  .gp-theme__pop {
+    width: min(288px, calc(100vw - 20px));
+  }
   .gp-footer {
     justify-content: center;
     text-align: center;
@@ -1182,7 +1317,7 @@ button {
   }
   .gp-card {
     border-radius: 18px 18px 0 0;
-    box-shadow: 0 -8px 30px rgba(60, 40, 20, 0.22), 0 -1px 0 var(--gp-ink-faint);
+    box-shadow: 0 -8px 30px rgba(var(--gp-shadow-rgb), 0.28), 0 -1px 0 var(--gp-ink-faint);
   }
   .gp-card::before {
     display: none;

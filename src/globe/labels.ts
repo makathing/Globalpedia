@@ -18,6 +18,7 @@ import {
   type Texture,
 } from 'three';
 import type { CountryRecord } from '../core/types';
+import type { GlobeTheme } from '../core/themes';
 import { DEG, latLngToVector3, smoothstep } from './math';
 
 export type LabelVariant = 'normal' | 'hover' | 'selected';
@@ -44,6 +45,9 @@ interface LabelEntry {
   /** canvas height ÷ font size — converts glyph px to sprite px. */
   heightRatio: number;
   aspect: number;
+  /** Measured once at build time; re-measuring 250 names is not free. */
+  width: number;
+  height: number;
   textures: Partial<Record<LabelVariant, Texture>>;
   variant: LabelVariant;
 }
@@ -56,6 +60,12 @@ export interface LabelSystem {
   update(camera: PerspectiveCamera, viewportHeightPx: number): void;
   setHover(iso3: string | null): void;
   setSelected(iso3: string | null): void;
+  /**
+   * Repaint every label in another theme's ink. Cached variant textures are
+   * disposed and only the variant each sprite is *currently* showing is redrawn;
+   * hover/selected variants are rebuilt lazily the next time they are needed.
+   */
+  restyle(theme: GlobeTheme): void;
   iso3Of(sprite: Sprite): string | undefined;
   dispose(): void;
 }
@@ -75,7 +85,13 @@ function measure(name: string): { width: number; height: number } {
   return { width: Math.ceil(w + PAD * 2), height: Math.ceil(FONT_PX * 1.5) };
 }
 
-function drawLabel(name: string, variant: LabelVariant, width: number, height: number): Texture {
+function drawLabel(
+  name: string,
+  variant: LabelVariant,
+  width: number,
+  height: number,
+  theme: GlobeTheme,
+): Texture {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -87,22 +103,22 @@ function drawLabel(name: string, variant: LabelVariant, width: number, height: n
     ctx.lineJoin = 'round';
     const cx = width / 2;
     const cy = height / 2 - FONT_PX * 0.06;
-    // Cream halo for legibility over any pastel.
+    // Halo in the theme's paper colour, for legibility over ocean and land alike.
     ctx.lineWidth = variant === 'normal' ? 7 : 8;
-    ctx.strokeStyle = variant === 'normal' ? 'rgba(255, 248, 232, 0.85)' : 'rgba(255, 250, 238, 0.95)';
+    ctx.strokeStyle = theme.labelHalo;
     ctx.strokeText(name, cx, cy);
-    ctx.fillStyle = variant === 'hover' ? '#7a4a2a' : '#2b221e';
+    ctx.fillStyle = variant === 'hover' ? theme.labelHover : theme.labelInk;
     ctx.fillText(name, cx, cy);
     if (variant === 'selected') {
       const w = ctx.measureText(name).width;
       const y = cy + FONT_PX * 0.5;
-      ctx.strokeStyle = 'rgba(255, 250, 238, 0.9)';
+      ctx.strokeStyle = theme.labelHalo;
       ctx.lineWidth = 6;
       ctx.beginPath();
       ctx.moveTo(cx - w / 2, y);
       ctx.lineTo(cx + w / 2, y);
       ctx.stroke();
-      ctx.strokeStyle = '#3b2f2a';
+      ctx.strokeStyle = theme.labelInk;
       ctx.lineWidth = 3;
       ctx.stroke();
     }
@@ -114,7 +130,8 @@ function drawLabel(name: string, variant: LabelVariant, width: number, height: n
   return tex;
 }
 
-export function createLabels(countries: Record<string, CountryRecord>): LabelSystem {
+export function createLabels(countries: Record<string, CountryRecord>, theme: GlobeTheme): LabelSystem {
+  let ink = theme;
   const group = new Group();
   group.renderOrder = 10;
   const entries: LabelEntry[] = [];
@@ -127,7 +144,7 @@ export function createLabels(countries: Record<string, CountryRecord>): LabelSys
     if (!rec || !Array.isArray(rec.latlng)) continue;
     const [lat, lng] = rec.latlng;
     const { width, height } = measure(rec.name);
-    const tex = drawLabel(rec.name, 'normal', width, height);
+    const tex = drawLabel(rec.name, 'normal', width, height, ink);
     const material = new SpriteMaterial({
       map: tex,
       transparent: true,
@@ -148,6 +165,8 @@ export function createLabels(countries: Record<string, CountryRecord>): LabelSys
       normal: sprite.position.clone().normalize(),
       heightRatio: height / FONT_PX,
       aspect: width / height,
+      width,
+      height,
       textures: { normal: tex },
       variant: 'normal',
     };
@@ -161,8 +180,7 @@ export function createLabels(countries: Record<string, CountryRecord>): LabelSys
     if (entry.variant === variant) return;
     let tex = entry.textures[variant];
     if (!tex) {
-      const { width, height } = measure(entry.name);
-      tex = drawLabel(entry.name, variant, width, height);
+      tex = drawLabel(entry.name, variant, entry.width, entry.height, ink);
       entry.textures[variant] = tex;
     }
     entry.material.map = tex;
@@ -231,6 +249,23 @@ export function createLabels(countries: Record<string, CountryRecord>): LabelSys
       selected = iso3;
       if (prev) refreshVariant(prev);
       if (iso3) refreshVariant(iso3);
+    },
+    restyle(next) {
+      ink = next;
+      for (const e of entries) {
+        const variant = e.variant;
+        // Drop every cached variant: none of them carry the new ink.
+        for (const key of Object.keys(e.textures) as LabelVariant[]) {
+          e.textures[key]?.dispose();
+          delete e.textures[key];
+        }
+        // Only the variant this sprite is actually showing is repainted now; the
+        // other two are cheap to rebuild on the next hover/selection.
+        const tex = drawLabel(e.name, variant, e.width, e.height, ink);
+        e.textures[variant] = tex;
+        e.material.map = tex;
+        e.material.needsUpdate = true;
+      }
     },
     iso3Of: (sprite) => bySprite.get(sprite)?.iso3,
     dispose() {

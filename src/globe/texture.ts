@@ -8,6 +8,7 @@
 import { feature, mesh, neighbors } from 'topojson-client';
 import type { GeometryCollection, GeometryObject, Objects, Topology } from 'topojson-specification';
 import type { CountryRecord } from '../core/types';
+import { DEFAULT_THEME, themeById, type GlobeTheme } from '../core/themes';
 import { projectX, projectY } from './math';
 
 /** Properties carried by production `public/data/world-50m.json` geometries. */
@@ -23,7 +24,7 @@ export interface CountryShape {
   iso3: string;
   name: string;
   geometry: AreaGeometry;
-  /** Index into PALETTE. */
+  /** Index into the active theme's 8-entry palette. Stable across themes. */
   paletteIndex: number;
 }
 
@@ -40,22 +41,25 @@ export interface GlobeTextures {
   idMap: IdMap;
   /** Keyed by ISO3, for the highlight layer. */
   shapes: Map<string, CountryShape>;
+  /**
+   * Repaint the visible map **into the existing `map` canvas** with another theme.
+   * The adjacency colouring and the pick index are NOT recomputed — only the
+   * paint changes — so the caller just has to flag `mapTexture.needsUpdate`.
+   */
+  redraw(theme: GlobeTheme): void;
 }
 
+/**
+ * The default (Classroom) theme's colours, kept as named exports for callers that
+ * predate theming. The drawing path itself never reads these — it takes a
+ * `GlobeTheme` — but every theme's palette is exactly 8 long, so an index handed
+ * out against one palette means the same slot in every other.
+ */
+const DEFAULT_GLOBE = themeById(DEFAULT_THEME).globe;
 /** Eight muted pastels, in the order the greedy colouring prefers them. */
-export const PALETTE = [
-  '#f2e2a3', // buttery yellow
-  '#f0b9a4', // salmon
-  '#c5d5ae', // sage
-  '#d5c5e4', // lilac
-  '#f6d1ad', // peach
-  '#bfe1cf', // mint
-  '#a9c7e2', // sky
-  '#eac0cb', // rose
-];
-
-export const OCEAN = '#cfe6f2';
-export const OUTLINE = '#3b2f2a';
+export const PALETTE: readonly string[] = DEFAULT_GLOBE.palette;
+export const OCEAN: string = DEFAULT_GLOBE.ocean;
+export const OUTLINE: string = DEFAULT_GLOBE.outline;
 
 /** Find the geometry collection to draw: `objects.countries` or the first collection present. */
 export function pickCollection(world: Topology): GeometryCollection<WorldProps> {
@@ -75,24 +79,24 @@ export function pickCollection(world: Topology): GeometryCollection<WorldProps> 
  * coloured neighbour, or, when all eight are taken, the entry least used
  * among its neighbours.
  */
-function assignColors(geometries: GeometryObject<WorldProps>[]): number[] {
+function assignColors(geometries: GeometryObject<WorldProps>[], palette: readonly string[]): number[] {
   const adj = neighbors(geometries);
   const n = geometries.length;
   const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => adj[b].length - adj[a].length);
   const colors = new Array<number>(n).fill(-1);
   for (const i of order) {
-    const used = new Array<number>(PALETTE.length).fill(0);
+    const used = new Array<number>(palette.length).fill(0);
     for (const j of adj[i]) if (colors[j] >= 0) used[colors[j]]++;
     // Deterministic tie-break so the same file always yields the same map:
     // start the scan at a position derived from the geometry id.
     const id = String(geometries[i].id ?? i);
     let hash = 0;
     for (let k = 0; k < id.length; k++) hash = (hash * 31 + id.charCodeAt(k)) >>> 0;
-    const start = hash % PALETTE.length;
+    const start = hash % palette.length;
     let best = -1;
     let bestCount = Infinity;
-    for (let k = 0; k < PALETTE.length; k++) {
-      const c = (start + k) % PALETTE.length;
+    for (let k = 0; k < palette.length; k++) {
+      const c = (start + k) % palette.length;
       if (used[c] < bestCount) {
         bestCount = used[c];
         best = c;
@@ -145,30 +149,42 @@ function makeCanvas(width: number, height: number): [HTMLCanvasElement, CanvasRe
   return [canvas, ctx];
 }
 
+/** The speckle tile, built once: a theme switch reuses it instead of re-running the LCG. */
+let grainTile: HTMLCanvasElement | null = null;
+
 /** A tiling grey-speckle pattern that reads as paper grain when drawn at low alpha. */
 function makeGrainPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
-  const size = 256;
-  const tile = document.createElement('canvas');
-  tile.width = tile.height = size;
-  const tctx = tile.getContext('2d');
-  if (!tctx) return null;
-  const img = tctx.createImageData(size, size);
-  const d = img.data;
-  // Seeded LCG so the grain is deterministic between runs.
-  let seed = 12345;
-  for (let i = 0; i < d.length; i += 4) {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    const v = (seed >>> 24) & 255;
-    d[i] = d[i + 1] = d[i + 2] = v;
-    d[i + 3] = 255;
+  if (!grainTile) {
+    const size = 256;
+    const tile = document.createElement('canvas');
+    tile.width = tile.height = size;
+    const tctx = tile.getContext('2d');
+    if (!tctx) return null;
+    const img = tctx.createImageData(size, size);
+    const d = img.data;
+    // Seeded LCG so the grain is deterministic between runs.
+    let seed = 12345;
+    for (let i = 0; i < d.length; i += 4) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const v = (seed >>> 24) & 255;
+      d[i] = d[i + 1] = d[i + 2] = v;
+      d[i + 3] = 255;
+    }
+    tctx.putImageData(img, 0, 0);
+    grainTile = tile;
   }
-  tctx.putImageData(img, 0, 0);
-  return ctx.createPattern(tile, 'repeat');
+  return ctx.createPattern(grainTile, 'repeat');
 }
 
-function drawGraticule(ctx: CanvasRenderingContext2D, width: number, height: number, s: number): void {
+function drawGraticule(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  s: number,
+  ink: string,
+): void {
   ctx.save();
-  ctx.strokeStyle = OUTLINE;
+  ctx.strokeStyle = ink;
   ctx.lineCap = 'butt';
 
   // Every 15° — thin, low alpha. The ±90° parallels collapse to the raster edge, skip them.
@@ -213,56 +229,66 @@ function drawGraticule(ctx: CanvasRenderingContext2D, width: number, height: num
 }
 
 /**
- * Build the visible map. `width` should be 8192 or 4096; everything scales with it.
+ * Paint the visible map into `ctx`, which must already be `width` × `width / 2`.
+ * Every colour comes from `theme`; the per-country palette *indices* do not, so a
+ * repaint keeps the map's colouring topology and swaps only the hues.
+ *
+ * `borders` is the pre-computed arc mesh — it is expensive and theme-independent,
+ * so the caller hangs on to it across repaints.
  */
-function drawMap(
-  world: Topology,
-  collection: GeometryCollection<WorldProps>,
+function paintMap(
+  ctx: CanvasRenderingContext2D,
   shapesByIndex: (CountryShape | null)[],
+  borders: GeoJSON.MultiLineString,
   width: number,
-): HTMLCanvasElement {
+  theme: GlobeTheme,
+): void {
   const height = width / 2;
   const s = width / 8192; // stroke widths are specified "at 8k"
-  const [canvas, ctx] = makeCanvas(width, height);
 
   // Ocean.
-  ctx.fillStyle = OCEAN;
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = theme.ocean;
   ctx.fillRect(0, 0, width, height);
 
-  // Country fills.
+  // Country fills. fillAlpha < 1 lets the sea show through, for line-work themes.
+  ctx.save();
+  ctx.globalAlpha = theme.fillAlpha;
   for (const shape of shapesByIndex) {
     if (!shape) continue;
-    ctx.fillStyle = PALETTE[shape.paletteIndex];
+    ctx.fillStyle = theme.palette[shape.paletteIndex];
     ctx.beginPath();
     traceGeometry(ctx, shape.geometry, width, height);
     ctx.fill('evenodd');
   }
+  ctx.restore();
 
-  // Paper grain over everything (land and sea), very subtle.
-  const grain = makeGrainPattern(ctx);
-  if (grain) {
-    ctx.save();
-    ctx.globalAlpha = 0.045;
-    ctx.fillStyle = grain;
-    ctx.fillRect(0, 0, width, height);
-    ctx.restore();
+  // Paper grain over everything (land and sea), very subtle. A full-raster pattern
+  // fill is one of the two costly steps here, so skip it outright when disabled.
+  if (theme.grainAlpha > 0) {
+    const grain = makeGrainPattern(ctx);
+    if (grain) {
+      ctx.save();
+      ctx.globalAlpha = theme.grainAlpha;
+      ctx.fillStyle = grain;
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+    }
   }
 
-  drawGraticule(ctx, width, height, s);
+  drawGraticule(ctx, width, height, s, theme.graticule);
 
   // Borders and coastlines — mesh() yields every arc exactly once.
-  const borders = mesh(world, collection);
   ctx.save();
-  ctx.strokeStyle = OUTLINE;
-  ctx.lineWidth = 1.5 * s;
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = theme.outline;
+  ctx.lineWidth = theme.outlineWidth * s;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   ctx.beginPath();
   traceLines(ctx, borders, width, height);
   ctx.stroke();
   ctx.restore();
-
-  return canvas;
 }
 
 /**
@@ -346,6 +372,8 @@ export interface BuildTexturesOptions {
   mapWidth: 8192 | 4096;
   /** Width of the picking index (height is half). Defaults to 4096. */
   idWidth?: number;
+  /** Colours for the first paint. Swap later with `GlobeTextures.redraw`. */
+  theme: GlobeTheme;
 }
 
 export function buildGlobeTextures(
@@ -355,7 +383,9 @@ export function buildGlobeTextures(
 ): GlobeTextures {
   const collection = pickCollection(world);
   const geometries = collection.geometries;
-  const colors = assignColors(geometries);
+  // Indices into an 8-entry palette. Every theme's palette is 8 long, so these stay
+  // valid for the life of the globe — the colouring is never recomputed on a switch.
+  const colors = assignColors(geometries, options.theme.palette);
 
   const shapes = new Map<string, CountryShape>();
   const shapesByIndex: (CountryShape | null)[] = geometries.map((g, i) => {
@@ -374,8 +404,21 @@ export function buildGlobeTextures(
     return shape;
   });
 
-  const map = drawMap(world, collection, shapesByIndex, options.mapWidth);
+  const width = options.mapWidth;
+  const [map, mapCtx] = makeCanvas(width, width / 2);
+  // Theme-independent and costly: computed once, reused by every repaint.
+  const borders = mesh(world, collection);
+  paintMap(mapCtx, shapesByIndex, borders, width, options.theme);
+
   const pickable = shapesByIndex.map((s) => (s && shapes.has(s.iso3) ? s : null));
   const idMap = buildIdMap(pickable, options.idWidth ?? 4096);
-  return { map, idMap, shapes };
+
+  return {
+    map,
+    idMap,
+    shapes,
+    redraw(theme) {
+      paintMap(mapCtx, shapesByIndex, borders, width, theme);
+    },
+  };
 }

@@ -10,6 +10,7 @@ import { renderPanel } from './panel';
 import { renderFooter } from './footer';
 import { createTooltip } from './tooltip';
 import { createHint, createLoading } from './overlay';
+import { createThemeController } from './theme';
 
 export interface UIHandle {
   /** Opens/updates the panel immediately with facts + content; photos start in the loading state. */
@@ -43,7 +44,9 @@ export function createUI(root: UIRoot, bus: EventBus): UIHandle {
     bus.emit('globe:select', { iso3 });
   };
 
-  const header = renderHeader(root.header, bus);
+  // Built before the header so the picker can read the theme already applied.
+  const theme = createThemeController(bus);
+  const header = renderHeader(root.header, bus, { theme });
   const panel = renderPanel(root.panel, bus, { getCountries, onNavigate: navigate });
   const disposeFooter = renderFooter(root.footer);
   const tooltip = createTooltip(root.stage, bus, getCountries);
@@ -76,6 +79,7 @@ export function createUI(root: UIRoot, bus: EventBus): UIHandle {
       offReady();
       offSelect();
       header.dispose();
+      theme.dispose();
       panel.dispose();
       disposeFooter();
       tooltip.dispose();
