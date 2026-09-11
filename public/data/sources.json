@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-09T01:00:56.844Z",
+  "generatedAt": "2026-09-11T00:18:38.035Z",
   "sources": {
     "countries": {
       "name": "mledoze/countries",
@@ -32,7 +32,7 @@
   },
   "counts": {
     "countries": 250,
-    "withContent": 28,
+    "withContent": 195,
     "withPopulation": 216,
     "geometries": 241,
     "flags": 250
