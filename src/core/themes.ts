@@ -410,7 +410,7 @@ export const THEMES: readonly Theme[] = [
     },
     globe: {
       ocean: '#c6dcd6',
-      palette: ['#cfd9a8', '#d9bb92', '#a8c6a0', '#c8b4a0', '#e2d2a8', '#9fc2b0', '#b6c8d2', '#d2b0ac'],
+      palette: ['#cfd9a8', '#d9bb92', '#a8c6a0', '#c8b4a0', '#e2d2a8', '#9fc2b0', '#b6c8d2', '#c5a8bc'],
       outline: '#3d4a32',
       outlineWidth: 1.5,
       graticule: '#3d4a32',
