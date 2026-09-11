@@ -12,20 +12,22 @@ const handle = createGlobe(container, worldTopology, countries, bus, { autoRotat
   `objects.countries` is used (falls back to the first GeometryCollection).
 - `countries` — `Record<ISO3, CountryRecord>`; label text = `name`, anchor = `latlng`, tier = `area`.
 - `opts.autoRotate` (default true; forced off by `prefers-reduced-motion`), `opts.initialIso3`,
-  `opts.textureSize` (8192 | 4096; default 8192 when the GPU allows and the pointer is fine).
+  `opts.textureSize` (8192 | 4096; default 8192 when the GPU allows and the pointer is fine),
+  `opts.theme` (a `ThemeId`; default `DEFAULT_THEME`).
 
 `GlobeHandle`: `flyTo(iso3, {duration?}) → Promise`, `setSelected(iso3|null)`, `setAutoRotate(on)`,
 `resize()`, `dispose()`. The default export is `createGlobe`.
 
 Bus contract: emits `globe:hover {iso3|null}` (on change) and `globe:select {iso3}` (tap, not drag);
-listens to `ui:flyTo {iso3}` (fly + highlight) and `ui:close` (clear highlight, auto-rotate resumes after 6 s).
+listens to `ui:flyTo {iso3}` (fly + highlight), `ui:close` (clear highlight, auto-rotate resumes after 6 s)
+and `ui:theme {id}` (repaint in that theme).
 
 ## Files
 
 | file | role |
 | --- | --- |
 | `index.ts` | `createGlobe`: wires everything, render loop, `flyTo`, bus listeners, dispose |
-| `texture.ts` | Canvas2D rasteriser: pastel fills (greedy adjacency colouring), grain, graticule, 1.5 px @8k outlines; ISO3 pick index |
+| `texture.ts` | Canvas2D rasteriser: theme fills (greedy adjacency colouring), grain, graticule, outlines; ISO3 pick index; `redraw(theme)` |
 | `globe.ts` | renderer, camera, lights, sphere, brass semi-meridian + finials + curved stem + wooden base |
 | `controls.ts` | OrbitControls wrapper: zoom-scaled rotate speed, auto-rotate that yields to input/selection |
 | `labels.ts` | one `Sprite` per country, serif text with cream halo, 3 area tiers revealed by zoom, limb fade |
@@ -48,5 +50,13 @@ listens to `ui:flyTo {iso3}` (fly + highlight) and `ui:close` (clear highlight, 
   created lazily. Countries with no polygon (Tuvalu…) still get a clickable label.
 - **Render on demand.** One rAF loop; `renderer.render` runs only when the camera moved, a flight/auto-rotate
   is active, or hover/selection changed. The loop stops while the tab is hidden.
+- **Theming is a repaint, never a rebuild.** Every colour comes from `core/themes.ts`'s `GlobeTheme`; the
+  globe owns none of them. A switch runs in two phases so the click feels instant: *synchronously* it
+  recolours the brass/wood materials and all three lights in place, calls `labels.restyle()` and
+  `highlight.restyle()` and tints the sphere; then, debounced onto an idle slot, `textures.redraw(theme)`
+  repaints the 8k map **into the same canvas** and flags `mapTexture.needsUpdate`. The adjacency colouring
+  (`neighbors()` over ~250 geometries), the arc mesh and the pick index are computed once and never again —
+  every theme's palette is exactly 8 long, so each country keeps its colour *slot* and only the hue changes.
+  Nothing in a switch touches the camera, so an in-flight `flyTo` is undisturbed.
 - **Textures.** 8192×4096 sRGB canvas texture with max anisotropy; MeshStandardMaterial roughness 0.55,
   metalness 0.02 (varnished paper, not plastic). Renderer has `alpha: true` so the page background shows.
