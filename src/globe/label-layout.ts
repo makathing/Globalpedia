@@ -45,13 +45,37 @@ export function labelFont(px: number): string {
  * 44 → 12 px, 36 → 10 px. The bottom rungs are deliberately below comfortable reading size:
  * they are the "lean in" tier, which is exactly how a printed globe behaves.
  */
-export const FONT_LADDER: readonly number[] = [96, 80, 66, 54, 44, 36];
+export const FONT_LADDER: readonly number[] = [96, 80, 66, 54, 44, 36, 30, 25, 21];
 
 /** Area (km²) at or above which a country starts on ladder rung i. */
 const TIER_AREA: readonly number[] = [2_500_000, 800_000, 250_000, 60_000, 10_000];
 
 /** How many rungs a name may step down before it is dropped rather than overlap a neighbour. */
-const MAX_STEP_DOWN = 2;
+const MAX_STEP_DOWN = 6;
+
+/**
+ * A name may also slide a little off its anchor before it gives up the rung — the move every
+ * atlas makes for a country wedged against a bigger neighbour (Norway beside Sweden, Poland
+ * between Germany and Belarus). Capped hard in degrees as well as in box fractions, so a name
+ * can shuffle out of a collision but can never wander far enough to sit over another country.
+ */
+const NUDGE_Y_FRACTION = 0.8; // of the box height
+const NUDGE_X_FRACTION = 0.45; // of the box width
+const MAX_NUDGE_LAT_DEG = 4.5;
+const MAX_NUDGE_LNG_DEG = 6;
+
+/** Anchor, then N/S, then W/E, then the four diagonals. First clear one wins. */
+const NUDGES: readonly [number, number][] = [
+  [0, 0],
+  [0, -1],
+  [0, 1],
+  [-1, 0],
+  [1, 0],
+  [-1, -1],
+  [1, -1],
+  [-1, 1],
+  [1, 1],
+];
 
 /** 1/cos(lat) past ~70.5° is more stretch than the glyphs survive; hold it here. */
 const MAX_SCALE_X = 3;
@@ -61,9 +85,13 @@ const MAX_LABEL_LAT = 74;
 /** Printed type is never perfectly square to the line. Degrees. */
 const TYPE_TILT_DEG = 0.6;
 
-/** Padding around a name's box, as a fraction of the font size (x, y). */
-const PAD_X = 0.28;
-const PAD_Y = 0.16;
+/**
+ * Padding around a name's box, as a fraction of the font size. Kept small, and much
+ * smaller vertically than horizontally: the box is also the collision unit, and a tall
+ * box makes two names on the *same* parallel fight each other for no visual reason.
+ */
+const PAD_X = 0.18;
+const PAD_Y = 0.06;
 
 export interface PlacedLabel {
   iso3: string;
@@ -165,8 +193,17 @@ export function layoutLabels(
       const rec = countries[iso3];
       return Boolean(rec && rec.name && Array.isArray(rec.latlng) && rec.latlng.length === 2);
     })
+    // Independent states first, then territories; descending area within each group, ISO3
+    // breaking ties. Area alone let "Saint Pierre and Miquelon" take the space Egypt or
+    // Norway needed — a long name on a small rock beats a short name on a large country at
+    // equal priority, which is the opposite of how an atlas is set.
     .sort((a, b) => {
-      const d = (countries[b].area ?? 0) - (countries[a].area ?? 0);
+      const ra = countries[a];
+      const rb = countries[b];
+      const ia = ra.independent ? 0 : 1;
+      const ib = rb.independent ? 0 : 1;
+      if (ia !== ib) return ia - ib;
+      const d = (rb.area ?? 0) - (ra.area ?? 0);
       return d !== 0 ? d : a < b ? -1 : 1;
     });
 
@@ -191,25 +228,40 @@ export function layoutLabels(
     const startTier = tierFor(rec.area ?? 0);
     const lastTier = Math.min(FONT_LADDER.length - 1, startTier + MAX_STEP_DOWN);
 
+    const maxDy = (MAX_NUDGE_LAT_DEG / 180) * H;
+    const maxDx = (MAX_NUDGE_LNG_DEG / 360) * W;
+    const anchorX = x;
+    const anchorY = projectY(lat, H);
+
     let placed: PlacedLabel | null = null;
-    for (let tier = startTier; tier <= lastTier; tier++) {
+    outer: for (let tier = startTier; tier <= lastTier; tier++) {
       const fontPx = FONT_LADDER[tier];
       const boxW = unitW * fontPx * scaleX + 2 * PAD_X * fontPx;
-      const boxH = fontPx * (1.16 + 2 * PAD_Y);
-      // Keep the whole box on the raster vertically; horizontally it may straddle the seam.
-      const y = clamp(projectY(lat, H), boxH / 2, H - boxH / 2);
-      const box: Box = { x0: x - boxW / 2, x1: x + boxW / 2, y0: y - boxH / 2, y1: y + boxH / 2 };
-      let clear = true;
-      for (const other of boxes) {
-        if (overlaps(box, other, W)) {
-          clear = false;
-          break;
+      // Collision height is roughly one em — ascender to descender — not the full line box.
+      // A taller box makes two names on the same parallel fight over air.
+      const boxH = fontPx * (0.98 + 2 * PAD_Y);
+      const stepY = Math.min(boxH * NUDGE_Y_FRACTION, maxDy);
+      const stepX = Math.min(boxW * NUDGE_X_FRACTION, maxDx);
+      for (const [nx, ny] of NUDGES) {
+        const cx = anchorX + nx * stepX;
+        // Keep the whole box on the raster vertically; horizontally it may straddle the seam.
+        const cy = clamp(anchorY + ny * stepY, boxH / 2, H - boxH / 2);
+        const box: Box = { x0: cx - boxW / 2, x1: cx + boxW / 2, y0: cy - boxH / 2, y1: cy + boxH / 2 };
+        let clear = true;
+        for (const other of boxes) {
+          if (overlaps(box, other, W)) {
+            clear = false;
+            break;
+          }
         }
+        if (!clear) continue;
+        boxes.push(box);
+        placed = {
+          iso3, name: rec.name, x: cx, y: cy, fontPx, scaleX, boxW, boxH,
+          tilt, bleed: bleedK * fontPx, tier,
+        };
+        break outer;
       }
-      if (!clear) continue;
-      boxes.push(box);
-      placed = { iso3, name: rec.name, x, y, fontPx, scaleX, boxW, boxH, tilt, bleed: bleedK * fontPx, tier };
-      break;
     }
 
     if (placed) {
