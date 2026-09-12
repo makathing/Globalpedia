@@ -73,9 +73,9 @@ export function createHighlightLayer(textures: GlobeTextures, theme: GlobeTheme,
    * same proportion of the name at every latitude, exactly like the glyphs above it.
    */
   function underline(label: PlacedLabel, soft: string, solid: string): void {
-    const half = (label.boxW * k) / 2 - label.fontPx * k * 0.2;
+    const half = (label.boxW * k) / 2 - label.fontPx * k * 0.3;
     if (half <= 0) return;
-    const y = (label.y + label.fontPx * 0.62) * k;
+    const y = (label.y + label.fontPx * 0.48) * k;
     const w = label.fontPx * k;
     for (const dx of [0, -width, width]) {
       const x = label.x * k + dx;
@@ -84,13 +84,13 @@ export function createHighlightLayer(textures: GlobeTextures, theme: GlobeTheme,
       ctx.moveTo(x - half, y);
       ctx.lineTo(x + half, y);
       ctx.lineCap = 'round';
-      ctx.globalAlpha = 0.3;
+      ctx.globalAlpha = 0.25;
       ctx.strokeStyle = soft;
-      ctx.lineWidth = Math.max(2.5, w * 0.3);
+      ctx.lineWidth = Math.max(2.5, w * 0.22);
       ctx.stroke();
-      ctx.globalAlpha = 0.95;
+      ctx.globalAlpha = 0.75;
       ctx.strokeStyle = solid;
-      ctx.lineWidth = Math.max(1, w * 0.1);
+      ctx.lineWidth = Math.max(1, w * 0.07);
       ctx.stroke();
       ctx.globalAlpha = 1;
     }

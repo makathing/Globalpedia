@@ -15,6 +15,7 @@ import type { CountryRecord } from '../core/types';
 import { createControls, MAX_DISTANCE, MIN_DISTANCE } from './controls';
 import { createGlobeScene, DEFAULT_DISTANCE, ORBIT_TARGET, STAND_UP } from './globe';
 import { createHighlightLayer } from './highlight';
+import { createLife } from './life';
 import { clamp, easeInOutCubic, latLngToVector3 } from './math';
 import { createPicking } from './picking';
 import { applySurfaceMaterial } from './surface';
@@ -95,6 +96,10 @@ export function createGlobe(
 
   const highlight = createHighlightLayer(tex, theme);
   rig.add(highlight.mesh);
+
+  // Ships and animals, ant-scale, absent until the camera comes close.
+  const life = createLife(tex.idMap, theme);
+  rig.add(life.group);
 
   const ctl = createControls(camera, renderer.domElement, opts.autoRotate ?? true);
   scene.updateMatrixWorld(true);
@@ -224,6 +229,7 @@ export function createGlobe(
     gs.hemiLight.intensity = t.hemiLight.intensity;
     gs.ambientLight.intensity = t.ambient;
     highlight.restyle(t);
+    life.restyle(t);
     // The varnish, the fibre relief and the gloss are material state, not raster state, so
     // they change on the click rather than waiting for phase 2. This also sets the tint,
     // which carries the (still old) raster towards the new theme until it is repainted.
@@ -276,6 +282,9 @@ export function createGlobe(
     lastTime = now;
     let moved = stepFlight(now);
     if (ctl.update(dt)) moved = true;
+    // Life drives its own frames only while it is close enough to be seen; when it
+    // returns false the loop goes back to sleep exactly as before.
+    if (life.update(dt, camera.position.distanceTo(ORBIT_TARGET))) moved = true;
     if (!moved && !needsRender) return;
     orient();
     if (moved) picking.refresh();
@@ -348,6 +357,7 @@ export function createGlobe(
       picking.dispose();
       ctl.dispose();
       highlight.dispose();
+      life.dispose();
       gs.dispose();
     },
   };
