@@ -378,6 +378,15 @@ function surfaceTile(surface: SurfaceTheme, grain: number): HTMLCanvasElement {
  * The whole printed surface in a single full-raster 'overlay' pass: ink density variation
  * across fills, ocean and line-work alike, the fibre of the paper, and the offset rosette.
  */
+/**
+ * How far from each pole the surface tooth is faded out. Fine high-frequency detail in u is
+ * exactly what the mip/anisotropy fallback undersamples into azimuthal noise — the pole
+ * starburst — so the strongest such detail on the globe, the paper tooth, is ramped off toward
+ * the singularity instead of being painted into it and washed over afterwards.
+ */
+const POLE_SOFTEN_DEGREES = 20;
+const POLE_SLABS = 12;
+
 export function compositeSurface(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -389,9 +398,26 @@ export function compositeSurface(
   if (!pattern) return;
   ctx.save();
   ctx.globalCompositeOperation = 'overlay';
-  ctx.globalAlpha = 1;
   ctx.fillStyle = pattern;
-  ctx.fillRect(0, 0, width, height);
+
+  const band = Math.min(height / 2, (POLE_SOFTEN_DEGREES / 180) * height);
+
+  // Everything away from the poles, in one full-strength pass.
+  ctx.globalAlpha = 1;
+  ctx.fillRect(0, band, width, height - 2 * band);
+
+  // The polar bands, ramped down toward the singularity. Slabs rather than a gradient because
+  // the fill is a pattern: `globalAlpha` is the only handle on its strength.
+  const slabH = band / POLE_SLABS;
+  for (const north of [true, false]) {
+    for (let k = 0; k < POLE_SLABS; k++) {
+      const t = (k + 0.5) / POLE_SLABS; // 0 at the pole, 1 at the band edge
+      ctx.globalAlpha = 0.05 + 0.95 * Math.pow(t, 2.6);
+      const y = north ? k * slabH : height - (k + 1) * slabH;
+      ctx.fillRect(0, y, width, slabH + 1);
+    }
+  }
+
   ctx.restore();
 }
 
@@ -574,6 +600,129 @@ export function drawGoreSeams(
     }
   }
   ctx.restore();
+}
+
+/* -- the polar caps ------------------------------------------------------------------------- */
+
+/**
+ * How far down from each pole the printed cap reaches, in degrees of latitude. Chosen from the
+ * 3D view, not the raster: the anisotropic smear is still obvious at 87° and has faded out by
+ * about 85.5°, so the cap has to reach past that to actually cover it.
+ */
+export const CAP_DEGREES = 5.5;
+/**
+ * How far the cap's haze reaches past its cut edge. The smear is not confined to the cap: it is
+ * still visible ~12° out, and a cap that big would swallow northern Greenland and Ellesmere. But
+ * streak visibility is proportional to the local contrast the sampler has to work with, so
+ * washing the surrounding band toward the cap tone suppresses what is left without hiding any
+ * geography. It also happens to be true of the object — the gores bunch and grey off toward the
+ * poles, which is the same thing `aging` already does there.
+ */
+const CAP_HAZE_DEGREES = 18;
+/** Below this, a theme's gores are too plain to have a decorated cap — rings only. */
+const CAP_DECOR_GORES = 0.25;
+
+function parseHex(hex: string): [number, number, number] {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return [128, 128, 128];
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** Blend a theme colour toward `target` by `k`. Returns a tuple, so results stay composable —
+ * feeding an `rgb(...)` string back into a hex parser is exactly how this painted grey once. */
+function mix(hex: string, target: [number, number, number], k: number): [number, number, number] {
+  const [r, g, b] = parseHex(hex);
+  const j = (a: number, t: number): number => Math.round(a + (t - a) * k);
+  return [j(r, target[0]), j(g, target[1]), j(b, target[2])];
+}
+
+const rgba = (c: [number, number, number], a: number): string => `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`;
+
+/**
+ * The paper disc glued over each pole. Drawn LAST in the paint, over the surface composite.
+ *
+ * This is the one place where the honest object and the rendering problem want the same thing.
+ * An equirectangular map has a singularity at each pole — every texel of the top row maps to one
+ * point — and anisotropic filtering smears whatever detail is there into a radial starburst that
+ * is, once the rest of the surface reads as printed, the most obviously computer-generated thing
+ * left on the globe. A real school globe has exactly the same problem, because twelve paper gores
+ * cannot meet cleanly at a point, and it is solved the same way: a small printed calotte glued
+ * over the join with the axis pin through its centre.
+ *
+ * In raster space a polar disc is simply a full-width band at the top (or bottom) edge, so this
+ * costs a couple of fillRects. The band is filled OPAQUELY whatever the theme, because it is the
+ * flatness that kills the smear — there is no detail left to stretch. `gores` then drives how
+ * visible and how decorated the cap is, since a calotte is part of how the gores are finished.
+ *
+ * It is deliberately flat — no tooth, no halftone. The starburst is not really the map showing
+ * through: it is high-frequency variation in u being undersampled by the mip/anisotropy fallback
+ * and aliasing into azimuthal noise, and the finest, strongest such variation on the whole
+ * surface is the paper tooth this pass added. A cap printed *under* the tooth still shimmers;
+ * one laid over it does not. The haze then damps that same tooth outward, which is why it is
+ * the contrast and not the colour that matters there.
+ */
+export function drawPolarCaps(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  s: number,
+  theme: GlobeTheme,
+): void {
+  const gores = theme.surface.gores;
+  const dark = luminance(theme.ocean) < 0.42;
+  const capH = (CAP_DEGREES / 180) * height;
+  // On light paper the cap sits a little lighter than the sea; on a dark board it reads as a rub.
+  const paper: [number, number, number] = dark ? [226, 230, 222] : [255, 255, 255];
+  const capRgb = mix(theme.ocean, paper, (dark ? 0.36 : 0.34) * (0.5 + 0.5 * gores));
+  const ink = theme.outline;
+
+  for (const north of [true, false]) {
+    ctx.save();
+    // Draw the south cap in a vertically mirrored frame, so one body of code does both.
+    if (!north) {
+      ctx.translate(0, height);
+      ctx.scale(1, -1);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
+    // The haze first, so the opaque disc lands cleanly on top of it.
+    const hazeH = (CAP_HAZE_DEGREES / 180) * height;
+    const haze = ctx.createLinearGradient(0, capH, 0, hazeH);
+    haze.addColorStop(0, rgba(capRgb, 0.3 + 0.2 * gores));
+    haze.addColorStop(1, rgba(capRgb, 0));
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, capH, width, hazeH - capH);
+
+    ctx.fillStyle = rgba(capRgb, 1);
+    ctx.fillRect(0, 0, width, capH);
+
+    ctx.fillStyle = ink;
+
+    // The cut edge of the disc.
+    ctx.globalAlpha = 0.36 + 0.44 * gores;
+    ctx.fillRect(0, capH - 2.2 * s, width, 2.2 * s);
+    // A finer ring inside it.
+    ctx.globalAlpha = 0.2 + 0.32 * gores;
+    ctx.fillRect(0, capH * 0.62, width, 1.4 * s);
+
+    if (gores >= CAP_DECOR_GORES) {
+      // Twelve ticks, on the same 30° spacing as the gore seams they finish. They stop well
+      // short of the centre: anything drawn INTO the singularity would smear like the map did.
+      ctx.globalAlpha = 0.26 + 0.4 * gores;
+      const y0 = capH * 0.66;
+      const tickH = capH * 0.28;
+      for (let i = 0; i < 12; i++) ctx.fillRect(i * (width / 12) - 1.2 * s, y0, 2.4 * s, tickH);
+      // The maker's dot at the very centre, mostly hidden by the axis pin.
+      ctx.globalAlpha = 0.1 + 0.22 * gores;
+      ctx.fillRect(0, 0, width, capH * 0.12);
+    }
+
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
 }
 
 /* -- material: varnish, fibre relief, patchy gloss -------------------------------------------- */

@@ -10,7 +10,7 @@ import type { GeometryCollection, GeometryObject, Objects, Topology } from 'topo
 import type { CountryRecord } from '../core/types';
 import { DEFAULT_THEME, themeById, type GlobeTheme } from '../core/themes';
 import { projectX, projectY } from './math';
-import { compositeSurface, drawAging, drawGoreSeams } from './surface';
+import { CAP_DEGREES, compositeSurface, drawAging, drawGoreSeams, drawPolarCaps } from './surface';
 
 /** Properties carried by production `public/data/world-50m.json` geometries. */
 export interface WorldProps {
@@ -158,12 +158,19 @@ function makeCanvas(width: number, height: number): [HTMLCanvasElement, CanvasRe
   return [canvas, ctx];
 }
 
+/**
+ * `capH` is the polar cap's depth in raster rows. The meridians stop just inside it rather than
+ * running to y = 0: every one of them converges on the pole there, and the sampler smears that
+ * convergence into a fan of rays — a large part of what read as the pole starburst was simply
+ * 24 graticule lines meeting at a point. On a printed globe they run under the cap and stop.
+ */
 function drawGraticule(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   s: number,
   ink: string,
+  capH: number,
 ): void {
   ctx.save();
   ctx.strokeStyle = ink;
@@ -173,10 +180,11 @@ function drawGraticule(
   ctx.globalAlpha = 0.17;
   ctx.lineWidth = 1 * s;
   ctx.beginPath();
+  const meridianTop = capH * 0.72;
   for (let lon = -180; lon < 180; lon += 15) {
     const x = Math.round(projectX(lon, width)) + 0.5;
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
+    ctx.moveTo(x, meridianTop);
+    ctx.lineTo(x, height - meridianTop);
   }
   for (let lat = -75; lat <= 75; lat += 15) {
     if (lat === 0) continue;
@@ -261,7 +269,7 @@ function paintMap(
   }
   ctx.restore();
 
-  drawGraticule(ctx, width, height, s, theme.graticule);
+  drawGraticule(ctx, width, height, s, theme.graticule, (CAP_DEGREES / 180) * height);
 
   // Borders and coastlines. A single uniform-width pass is the loudest "a computer drew this"
   // tell there is, so the mesh is stroked three times at sub-pixel offsets: the main line, then
@@ -302,6 +310,11 @@ function paintMap(
   compositeSurface(ctx, width, height, theme.surface, theme.grainAlpha);
   drawAging(ctx, width, height, s, theme);
   drawGoreSeams(ctx, width, height, s, theme);
+
+  // The caps go on LAST, over the paper tooth rather than under it. That ordering is the whole
+  // point: the pole starburst is high-frequency detail in u being undersampled, and the fine
+  // tooth is the strongest such detail there is. A cap that carried tooth would still shimmer.
+  drawPolarCaps(ctx, width, height, s, theme);
 
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = 'source-over';
