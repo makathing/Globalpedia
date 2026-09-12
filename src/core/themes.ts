@@ -118,14 +118,33 @@ const FINE_ROWS =
 const FINE_COLS =
   'repeating-linear-gradient(to right, transparent 0, transparent 7px, var(--gp-rule-faint) 7px, var(--gp-rule-faint) 8px)';
 
-/** Fractal-noise grain. `tint` is an "r g b" triple in 0..1, `a` the noise alpha. */
-const grain = (tint: string, a: number): string =>
-  `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 ${tint.split(' ')[0]}  0 0 0 0 ${tint.split(' ')[1]}  0 0 0 0 ${tint.split(' ')[2]}  0 0 0 ${a} 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>")`;
+/**
+ * Paper texture. Two octaves, because one is what makes CSS noise look like CSS noise:
+ * a fine, horizontally-stretched fibre (paper fibres run with the grain of the sheet)
+ * over a coarse, slow mottle that keeps the sheet from being one even colour.
+ * `tint` is an "r g b" triple in 0..1; `fine` and `mottle` are their alphas.
+ */
+const grain = (tint: string, fine: number, mottle: number, seed = 7): string => {
+  const [r, g, b] = tint.split(' ');
+  const ink = (a: number): string =>
+    `<feColorMatrix values='0 0 0 0 ${r}  0 0 0 0 ${g}  0 0 0 0 ${b}  0 0 0 ${a} 0'/>`;
+  return (
+    `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='420' height='420'>` +
+    `<filter id='m'><feTurbulence type='fractalNoise' baseFrequency='0.012' numOctaves='4' seed='${seed + 11}' stitchTiles='stitch'/>${ink(mottle)}</filter>` +
+    `<filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.85 0.38' numOctaves='3' seed='${seed}' stitchTiles='stitch'/>${ink(fine)}</filter>` +
+    `<rect width='100%25' height='100%25' filter='url(%23m)'/>` +
+    `<rect width='100%25' height='100%25' filter='url(%23f)'/>` +
+    `</svg>")`
+  );
+};
 
-const WARM_GRAIN = grain('0.45 0.40 0.33', 0.09);
-const CHALK_GRAIN = grain('0.95 0.97 0.93', 0.11);
-const SEPIA_GRAIN = grain('0.42 0.32 0.18', 0.12);
-const COOL_GRAIN = grain('0.80 0.90 1.00', 0.07);
+/** Tile size for the grain layers above. */
+const GRAIN_SIZE = '420px 420px';
+
+const WARM_GRAIN = grain('0.45 0.40 0.33', 0.1, 0.055, 7);
+const CHALK_GRAIN = grain('0.95 0.97 0.93', 0.12, 0.06, 23);
+const SEPIA_GRAIN = grain('0.42 0.32 0.18', 0.13, 0.095, 41);
+const COOL_GRAIN = grain('0.80 0.90 1.00', 0.075, 0.042, 59);
 
 /* -- the themes ---------------------------------------------------------------------------- */
 
@@ -146,6 +165,7 @@ export const THEMES: readonly Theme[] = [
       '--gp-rule-gap': '30px',
       '--gp-vignette': 'rgba(70, 50, 30, 0.10)',
       '--gp-grain-image': WARM_GRAIN,
+      '--gp-grain-size': GRAIN_SIZE,
       '--gp-grain-opacity': '0.55',
       '--gp-grain-blend': 'multiply',
       '--gp-shadow-rgb': '60, 40, 20',
@@ -213,6 +233,7 @@ export const THEMES: readonly Theme[] = [
       '--gp-rule-gap': '34px',
       '--gp-vignette': 'rgba(0, 0, 0, 0.30)',
       '--gp-grain-image': CHALK_GRAIN,
+      '--gp-grain-size': GRAIN_SIZE,
       '--gp-grain-opacity': '0.40',
       '--gp-grain-blend': 'screen',
       '--gp-shadow-rgb': '0, 0, 0',
@@ -280,6 +301,7 @@ export const THEMES: readonly Theme[] = [
       '--gp-rule-gap': '32px',
       '--gp-vignette': 'rgba(92, 62, 28, 0.26)',
       '--gp-grain-image': SEPIA_GRAIN,
+      '--gp-grain-size': GRAIN_SIZE,
       '--gp-grain-opacity': '0.62',
       '--gp-grain-blend': 'multiply',
       '--gp-shadow-rgb': '78, 52, 24',
@@ -347,6 +369,7 @@ export const THEMES: readonly Theme[] = [
       '--gp-rule-gap': '40px',
       '--gp-vignette': 'rgba(0, 8, 24, 0.42)',
       '--gp-grain-image': COOL_GRAIN,
+      '--gp-grain-size': GRAIN_SIZE,
       '--gp-grain-opacity': '0.22',
       '--gp-grain-blend': 'screen',
       '--gp-shadow-rgb': '0, 6, 20',
@@ -414,6 +437,7 @@ export const THEMES: readonly Theme[] = [
       '--gp-rule-gap': '24px',
       '--gp-vignette': 'rgba(50, 66, 40, 0.10)',
       '--gp-grain-image': WARM_GRAIN,
+      '--gp-grain-size': GRAIN_SIZE,
       '--gp-grain-opacity': '0.42',
       '--gp-grain-blend': 'multiply',
       '--gp-shadow-rgb': '44, 56, 34',
@@ -481,6 +505,7 @@ export const THEMES: readonly Theme[] = [
       '--gp-rule-gap': '30px',
       '--gp-vignette': 'rgba(0, 0, 0, 0.46)',
       '--gp-grain-image': COOL_GRAIN,
+      '--gp-grain-size': GRAIN_SIZE,
       '--gp-grain-opacity': '0.26',
       '--gp-grain-blend': 'screen',
       '--gp-shadow-rgb': '0, 0, 0',
