@@ -19,9 +19,9 @@
  * upright because nothing ever tips it.
  *
  * One deliberate consequence: the pins belong to the cradle, so once the user rolls the
- * globe about the camera's right vector the geographic poles no longer sit in them. A
- * sphere turning inside a thin ring reads perfectly well, and chasing the poles with the
- * cradle would put the furniture back in motion — which is the thing being fixed here.
+ * globe off its axis the geographic poles no longer sit in them. A sphere turning inside a
+ * thin ring reads perfectly well, and chasing the poles with the cradle would put the
+ * furniture back in motion — which is the thing being fixed here.
  */
 import {
   AmbientLight,

@@ -43,9 +43,14 @@ and `ui:theme {id}` (repaint in that theme).
   light are bolted to the world and never move; the camera is bolted down too, with one degree of freedom
   left — sliding along a fixed view ray to zoom. Everything the user does turns `globeSpin`, the group
   holding the sphere, the highlight and the life layer, inside a `rig` that supplies the 23.5° tilt and is
-  then never touched again. Horizontal drag spins it about its own tilted axis, vertical drag rolls it
-  about the camera's right vector, and neither is clamped, so every point including both poles can be
-  brought to face the viewer. This replaced an inversion of the same thing — the camera orbited, `standRig`
+  then never touched again. Horizontal drag spins it about its own tilted axis; vertical drag rolls it
+  about the perpendicular to that axis and the line of sight, so the drag walks the facing point along
+  a meridian and straight over the poles. Neither is clamped, so every point of the planet can be
+  brought to face the viewer, and past a pole the map simply carries on and comes up inverted.
+  The camera's right vector would have been the obvious axis for the vertical drag and is the wrong
+  one: it sits 67.2° from the tilted axis rather than 90°, so rolling about it walks a *small* circle
+  that measured out at exactly 62.8°N — a user dragging straight up stalls 27° short of the pole, and
+  the diagonal drag that would get them there is not discoverable. This replaced an inversion of the same thing — the camera orbited, `standRig`
   was counter-rotated by the azimuth each frame and the camera was rolled to keep the base upright. That
   fake only ever compensated azimuth: change elevation and the whole cradle swung up and down the screen.
   Both the counter-rotation and the roll are gone, and so is OrbitControls; the feel (damping, inertia,
@@ -53,6 +58,9 @@ and `ui:theme {id}` (repaint in that theme).
   The view target sits on the axis just below the globe centre so the framing has room for the base, and
   the fixed viewpoint sits in the stand's own meridian plane 31.8° above the equator — the pose the
   orbiting camera used to open in, so the globe at rest looks exactly as it did.
+  `flyTo` spends its one free degree of freedom — a twist about the view axis, which leaves the
+  country dead centre — on returning the globe's axis to the cradle's lean, rather than carrying
+  whatever roll the user left behind into the flight and landing Australia on its side.
   One accepted liberty: the pins belong to the cradle, so after a roll they no longer point at the
   geographic poles. A sphere turning inside a thin ring reads naturally; chasing the poles with the
   cradle would put the furniture back in motion.

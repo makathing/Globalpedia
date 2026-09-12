@@ -6,11 +6,20 @@
  * is sliding along that ray to zoom. Everything the user does to "move the world" is a
  * rotation of `spin`, the group that carries the sphere, the highlight and the life layer.
  *
- * Two axes, trackball style, so every point of the planet is reachable:
+ * Two axes, both fixed, both perpendicular to each other, so every point of the planet is
+ * reachable and a plain drag gets you there:
  *   horizontal drag → about the globe's own tilted axis (the parent frame's local +Y);
- *   vertical drag   → about the camera's right vector, which is constant now the camera is.
- * Neither is clamped — rolling straight over a pole and out the other side is allowed, which
- * is the whole reason a polar angle limit could not survive this change.
+ *   vertical drag   → about TILT_AXIS, perpendicular to that axis and to the view direction,
+ *                     so the drag walks the facing point along a meridian and straight over
+ *                     the poles.
+ * Neither is clamped — rolling over a pole and out the other side is allowed, which is the whole
+ * reason a polar angle limit could not survive this change.
+ *
+ * The vertical axis is deliberately *not* the camera's right vector. That vector sits 67.2° from
+ * the globe's tilted axis rather than 90°, so rolling about it walks a small circle that tops out
+ * at 62.8°N — a user dragging straight up stalls 27° short of the pole with nothing to explain
+ * why, and the diagonal that would get them there is not something anyone discovers. Being able
+ * to reach a pole in principle is not the same as reaching it in practice.
  *
  * The feel is lifted from the OrbitControls this replaced, deliberately and to the number:
  * the same 2π·px/clientHeight mapping, the same zoom-scaled rotate speed, the same
@@ -90,18 +99,26 @@ export function createControls(o: ControlsOptions): GlobeControls {
   o.spin.parent?.getWorldQuaternion(toRig);
   toRig.invert();
 
+  /**
+   * The vertical drag's axis, in the tilt frame: perpendicular to the globe's axis and to the
+   * line of sight, which is exactly the condition for a roll about it to trace a meridian. Both
+   * inputs are fixed for the life of the scene, so this is computed once too.
+   */
+  const TILT_AXIS = new Vector3()
+    .crossVectors(SPIN_AXIS, o.viewDir.clone().applyQuaternion(toRig))
+    .normalize();
+
   let distance = clamp(o.camera.position.distanceTo(o.target), MIN_DISTANCE, MAX_DISTANCE);
   let wanted = o.autoRotate && !reducedMotion;
   let selected = false;
   let suspended = false;
   let interacting = false;
   let resumeTimer = 0;
-  /** Undelivered rotation, in radians: x about the globe's axis, y about the camera's right. */
+  /** Undelivered rotation, in radians: `Spin` about the globe's axis, `Tilt` about TILT_AXIS. */
   let pendingSpin = 0;
   let pendingTilt = 0;
 
   const qDelta = new Quaternion();
-  const axis = new Vector3();
   const lastPos = o.camera.position.clone();
 
   function autoRotating(): boolean {
@@ -118,15 +135,14 @@ export function createControls(o: ControlsOptions): GlobeControls {
     scheduleResume();
   }
 
-  /** Rotate the globe: `s` about its own axis, `t` about the camera's right vector. */
+  /** Rotate the globe: `s` about its own axis, `t` about the meridian-walking axis. */
   function rotate(s: number, t: number): void {
     if (s) {
       qDelta.setFromAxisAngle(SPIN_AXIS, s);
       o.spin.quaternion.premultiply(qDelta);
     }
     if (t) {
-      axis.set(1, 0, 0).applyQuaternion(o.camera.quaternion).applyQuaternion(toRig).normalize();
-      qDelta.setFromAxisAngle(axis, t);
+      qDelta.setFromAxisAngle(TILT_AXIS, t);
       o.spin.quaternion.premultiply(qDelta);
     }
     if (s || t) o.spin.quaternion.normalize();
@@ -172,8 +188,8 @@ export function createControls(o: ControlsOptions): GlobeControls {
     prev.x = e.clientX;
     prev.y = e.clientY;
     if (pointers.size === 1) {
-      // Drag right → the surface goes right; drag down → it goes down. Both signs match the
-      // camera-orbiting controls this replaced.
+      // Drag right → the surface goes right; drag down → it goes down, walking the meridian.
+      // Both signs match the camera-orbiting controls this replaced.
       pendingSpin += dragToRadians(dx);
       pendingTilt += dragToRadians(dy);
     } else if (pointers.size === 2) {
