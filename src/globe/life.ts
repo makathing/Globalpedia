@@ -1,7 +1,7 @@
 /**
  * Life on the globe — ships under sail and animals where they actually live, at ant scale.
  *
- * The whole feature rides on one observation: `lookupId(idMap, u, v)` already answers
+ * The whole feature rides on one observation: `lookupCountryId(idMap, u, v)` already answers
  * "what is under this point of the planet?" for every point of the planet, and it answers
  * `null` for ocean. That is a complete land/water oracle, already built and already in
  * memory, so this file needs no coastline geometry and no new data. Every placement and
@@ -47,7 +47,7 @@ import {
 import type { GlobeTheme } from '../core/themes';
 import { DEG, latLngToVector3, smoothstep } from './math';
 import { mulberry32 } from './surface';
-import { lookupId, type IdMap } from './texture';
+import { lookupCountryId, type IdMap } from './texture';
 
 /* ── public surface ─────────────────────────────────────────────────────────────────────── */
 
@@ -106,7 +106,7 @@ const CELL_INSET = 0.82;
 /* ── geography helpers ──────────────────────────────────────────────────────────────────── */
 
 /**
- * The (u, v) `lookupId` wants. It is fed raycast hits against `SphereGeometry`, whose default
+ * The (u, v) the id map wants. It is fed raycast hits against `SphereGeometry`, whose default
  * UV layout has v = 1 at the **north** pole — not the raster's top-down v — so the latitude
  * term is (lat + 90) / 180 and not its complement. Getting this backwards mirrors the planet
  * about the equator, which is exactly the kind of bug that puts penguins in Siberia, so the
@@ -121,7 +121,8 @@ function uvOf(lat: number, lng: number): [number, number] {
 /** ISO3 under a geographic point, or null for ocean. The land/water oracle, whole planet. */
 function isoAt(idMap: IdMap, lat: number, lng: number): string | null {
   const [u, v] = uvOf(lat, lng);
-  return lookupId(idMap, u, v);
+  // Territory, not ink: a name printed out over the sea must not read as land.
+  return lookupCountryId(idMap, u, v);
 }
 
 /** Unit vector → geographic, the exact inverse of `latLngToVector3` (see math.ts). */

@@ -760,14 +760,18 @@ function isClearOfPolygons(index: Uint16Array, width: number, height: number, x:
  * Then the country index, where anti-aliased border pixels have no exact encoding (index 0),
  * so fall back to a 3×3 neighbourhood vote.
  */
-export function lookupId(idMap: IdMap, u: number, v: number): string | null {
-  const { width, height, index, iso3s, labelInk } = idMap;
+/**
+ * Territory only: whose *land* is under this point, ignoring printed names.
+ *
+ * Use this for questions about geography rather than about what the reader is
+ * pointing at. Names are set over open water — a displaced label and its leader,
+ * or a long name overhanging its coast — so `lookupId` reports a country there,
+ * which is right for a click and wrong for a ship.
+ */
+export function lookupCountryId(idMap: IdMap, u: number, v: number): string | null {
+  const { width, height, index, iso3s } = idMap;
   const x = Math.min(width - 1, Math.max(0, Math.floor(u * width)));
   const y = Math.min(height - 1, Math.max(0, Math.floor((1 - v) * height)));
-  if (labelInk.length) {
-    const ink = labelInk[y * width + x];
-    if (ink) return iso3s[ink - 1];
-  }
   const direct = index[y * width + x];
   if (direct) return iso3s[direct - 1];
   const votes = new Map<number, number>();
@@ -789,6 +793,18 @@ export function lookupId(idMap: IdMap, u: number, v: number): string | null {
     }
   }
   return best ? iso3s[best - 1] : null;
+}
+
+/** What the reader is pointing at: printed ink wins, then the territory beneath it. */
+export function lookupId(idMap: IdMap, u: number, v: number): string | null {
+  const { width, height, iso3s, labelInk } = idMap;
+  if (labelInk.length) {
+    const x = Math.min(width - 1, Math.max(0, Math.floor(u * width)));
+    const y = Math.min(height - 1, Math.max(0, Math.floor((1 - v) * height)));
+    const ink = labelInk[y * width + x];
+    if (ink) return iso3s[ink - 1];
+  }
+  return lookupCountryId(idMap, u, v);
 }
 
 export interface BuildTexturesOptions {
