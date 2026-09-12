@@ -16,7 +16,7 @@ const handle = createGlobe(container, worldTopology, countries, bus, { autoRotat
   `opts.textureSize` (8192 | 4096; default 8192 when the GPU allows and the pointer is fine),
   `opts.theme` (a `ThemeId`; default `DEFAULT_THEME`).
 
-`GlobeHandle`: `flyTo(iso3, {duration?}) → Promise`, `setSelected(iso3|null)`, `setAutoRotate(on)`,
+`GlobeHandle`: `flyTo(iso3, {duration?}) → Promise` (turns the *globe*, not the camera), `setSelected(iso3|null)`, `setAutoRotate(on)`,
 `resize()`, `dispose()`. The default export is `createGlobe`.
 
 Bus contract: emits `globe:hover {iso3|null}` (on change) and `globe:select {iso3}` (tap, not drag);
@@ -31,7 +31,7 @@ and `ui:theme {id}` (repaint in that theme).
 | `texture.ts` | Canvas2D rasteriser: theme fills (greedy adjacency colouring), graticule, multi-pass outlines; ISO3 pick index; `redraw(theme)` |
 | `surface.ts` | The printed surface: paper/ink/halftone tiles, age, gore seams, and the sphere's bump + roughness + clearcoat |
 | `globe.ts` | renderer, camera, lights, sphere, brass semi-meridian + finials + curved stem + wooden base |
-| `controls.ts` | OrbitControls wrapper: zoom-scaled rotate speed, auto-rotate that yields to input/selection |
+| `controls.ts` | drag → globe rotation (two axes, unclamped), wheel/pinch → dolly, zoom-scaled rotate speed, auto-rotate that yields to input/selection |
 | `label-layout.ts` | where each country name is printed: position, size from the country's own width, `1/cos(lat)` pre-stretch, collisions, leader lines |
 | `highlight.ts` | 2048×1024 transparent canvas on a 1.002-radius sphere: the wash, plus an underline beneath the printed name |
 | `picking.ts` | pointer → sphere UV → pick index; click = < 5 px & < 300 ms |
@@ -39,11 +39,23 @@ and `ui:theme {id}` (repaint in that theme).
 
 ## Design decisions
 
-- **Tilt without fighting OrbitControls.** The sphere never rotates; the camera orbits. `camera.up` is set to
-  the 23.5°-tilted axis before OrbitControls is built, so dragging/auto-rotate spin around the *real* axis.
-  The stand (`standRig`) is counter-rotated by the azimuth each frame so it stays put on screen, and the
-  camera is rolled so the base always reads as upright. The orbit target sits on the axis just below the
-  globe centre so the default framing has room for the base.
+- **The cradle is furniture: the globe turns, nothing else does.** The ring, pins, stem, base and key
+  light are bolted to the world and never move; the camera is bolted down too, with one degree of freedom
+  left — sliding along a fixed view ray to zoom. Everything the user does turns `globeSpin`, the group
+  holding the sphere, the highlight and the life layer, inside a `rig` that supplies the 23.5° tilt and is
+  then never touched again. Horizontal drag spins it about its own tilted axis, vertical drag rolls it
+  about the camera's right vector, and neither is clamped, so every point including both poles can be
+  brought to face the viewer. This replaced an inversion of the same thing — the camera orbited, `standRig`
+  was counter-rotated by the azimuth each frame and the camera was rolled to keep the base upright. That
+  fake only ever compensated azimuth: change elevation and the whole cradle swung up and down the screen.
+  Both the counter-rotation and the roll are gone, and so is OrbitControls; the feel (damping, inertia,
+  zoom-scaled drag, wheel step, auto-rotate speed) is carried over to the number.
+  The view target sits on the axis just below the globe centre so the framing has room for the base, and
+  the fixed viewpoint sits in the stand's own meridian plane 31.8° above the equator — the pose the
+  orbiting camera used to open in, so the globe at rest looks exactly as it did.
+  One accepted liberty: the pins belong to the cradle, so after a roll they no longer point at the
+  geographic poles. A sphere turning inside a thin ring reads naturally; chasing the poles with the
+  cradle would put the furniture back in motion.
 - **Picking is pixel-exact, not geometric.** A 4096×2048 index (`Uint16Array`, 16 MB) is decoded from a
   flat-colour canvas; the blue channel is a checksum so anti-aliased border blends fail the lookup and fall
   back to a 3×3 neighbourhood vote instead of decoding as a wrong country. Stand meshes are never raycast.

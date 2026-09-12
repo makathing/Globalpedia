@@ -13,7 +13,7 @@ import type { EventBus } from '../core/events';
 import { DEFAULT_THEME, themeById, type GlobeTheme, type ThemeId } from '../core/themes';
 import type { CountryRecord } from '../core/types';
 import { createControls, MAX_DISTANCE, MIN_DISTANCE } from './controls';
-import { createGlobeScene, DEFAULT_DISTANCE, ORBIT_TARGET, STAND_UP } from './globe';
+import { createGlobeScene, FACING_POINT, spinForLongitude, VIEW_DIR, VIEW_TARGET } from './globe';
 import { createHighlightLayer } from './highlight';
 import { createLife } from './life';
 import { clamp, easeInOutCubic, latLngToVector3 } from './math';
@@ -33,7 +33,7 @@ export interface GlobeOptions {
 }
 
 export interface GlobeHandle {
-  /** Rotate the camera so `iso3` faces the viewer (eased, ~900 ms). Resolves when the flight ends. */
+  /** Turn the globe so `iso3` faces the viewer (eased, ~900 ms). Resolves when the flight ends. */
   flyTo(iso3: string, opts?: { duration?: number }): Promise<void>;
   /** Highlight a country (or clear with null). */
   setSelected(iso3: string | null): void;
@@ -56,8 +56,9 @@ const SMALL_COUNTRY_DISTANCE = 2.1;
 interface Flight {
   start: number;
   duration: number;
-  fromDir: Vector3;
-  rotation: Quaternion;
+  /** The globe's rotation at the start of the flight, and where it must end up. */
+  from: Quaternion;
+  to: Quaternion;
   fromDist: number;
   toDist: number;
   resolve(): void;
@@ -92,16 +93,24 @@ export function createGlobe(
   );
   if (!textures) throw new Error('globe textures were not built');
   const tex = textures as ReturnType<typeof buildGlobeTextures>;
-  const { renderer, scene, camera, rig, standRig, sphere } = gs;
+  const { renderer, scene, camera, globeSpin, sphere } = gs;
 
+  // Both ride inside the spinning group, so they turn with the map rather than sliding over it.
   const highlight = createHighlightLayer(tex, theme);
-  rig.add(highlight.mesh);
+  globeSpin.add(highlight.mesh);
 
   // Ships and animals, ant-scale, absent until the camera comes close.
   const life = createLife(tex.idMap, theme);
-  rig.add(life.group);
+  globeSpin.add(life.group);
 
-  const ctl = createControls(camera, renderer.domElement, opts.autoRotate ?? true);
+  const ctl = createControls({
+    camera,
+    dom: renderer.domElement,
+    spin: globeSpin,
+    target: VIEW_TARGET,
+    viewDir: VIEW_DIR,
+    autoRotate: opts.autoRotate ?? true,
+  });
   scene.updateMatrixWorld(true);
 
   // --- state ----------------------------------------------------------------------------------
@@ -135,43 +144,43 @@ export function createGlobe(
     needsRender = true;
   }
 
-  // --- camera orientation ---------------------------------------------------------------------
-  const camUp = new Vector3();
-  const camBack = new Vector3();
-  const standUpWorld = new Vector3();
-  const tmpQ = new Quaternion();
+  // --- flyTo ----------------------------------------------------------------------------------
+  // The camera is nailed down, so a flight is a rotation of the globe: slerp its quaternion
+  // until the country lands on FACING_POINT, the spot dead centre of the fixed view.
   const tmpV = new Vector3();
+  const tmpQ = new Quaternion();
+  const globeAxis = new Vector3();
+  const axisFlat = new Vector3();
+  const upFlat = new Vector3();
+  const crossTmp = new Vector3();
+  /** The cradle's own axis, in the tilt frame: its local +Y, which is where the pins point. */
+  const CRADLE_AXIS = new Vector3(0, 1, 0);
 
   /**
-   * Keep the stand fixed relative to the viewer and the base upright on screen.
-   * The stand is counter-rotated about the axis by the camera's azimuth; then the camera is rolled
-   * about its view axis by the signed angle between its up vector and the base's up vector.
+   * Land the globe level. Putting a country dead centre leaves one degree of freedom — a twist
+   * about the view axis — and the shortest rotation spends it on whatever roll the user happened
+   * to leave behind, which is how you arrive at Australia lying on its side. So spend it instead
+   * on bringing the globe's own axis back as close to the cradle's as the framing allows — poles
+   * back in the pins, which is exactly where the orbiting camera always used to leave them.
+   * Twisting about FACING_POINT keeps the country dead centre while it happens.
    */
-  function orient(): void {
-    standRig.rotation.y = ctl.controls.getAzimuthalAngle();
-    tmpQ.copy(rig.quaternion).multiply(standRig.quaternion);
-    standUpWorld.copy(STAND_UP).applyQuaternion(tmpQ);
-
-    camUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
-    camBack.set(0, 0, 1).applyQuaternion(camera.quaternion);
-    // Project the desired up onto the image plane, then measure the roll from camUp to it.
-    tmpV.copy(standUpWorld).addScaledVector(camBack, -standUpWorld.dot(camBack)).normalize();
-    const roll = Math.atan2(camUp.clone().cross(tmpV).dot(camBack), camUp.dot(tmpV));
-    camera.rotateZ(roll);
-    camera.updateMatrixWorld();
+  function levelUp(q: Quaternion): void {
+    globeAxis.set(0, 1, 0).applyQuaternion(q);
+    axisFlat.copy(globeAxis).addScaledVector(FACING_POINT, -globeAxis.dot(FACING_POINT));
+    upFlat.copy(CRADLE_AXIS).addScaledVector(FACING_POINT, -CRADLE_AXIS.dot(FACING_POINT));
+    // A pole dead centre: the axis points at the viewer and there is no "up" to align.
+    if (axisFlat.lengthSq() < 1e-6 || upFlat.lengthSq() < 1e-6) return;
+    axisFlat.normalize();
+    upFlat.normalize();
+    const twist = Math.atan2(crossTmp.crossVectors(axisFlat, upFlat).dot(FACING_POINT), axisFlat.dot(upFlat));
+    q.premultiply(tmpQ.setFromAxisAngle(FACING_POINT, twist));
   }
-
-  // --- flyTo ----------------------------------------------------------------------------------
-  const identity = new Quaternion();
   function stepFlight(now: number): boolean {
     if (!flight) return false;
     const t = flight.duration > 0 ? clamp((now - flight.start) / flight.duration, 0, 1) : 1;
     const k = easeInOutCubic(t);
-    tmpQ.copy(identity).slerp(flight.rotation, k);
-    tmpV.copy(flight.fromDir).applyQuaternion(tmpQ);
-    camera.position
-      .copy(ORBIT_TARGET)
-      .addScaledVector(tmpV, flight.fromDist + (flight.toDist - flight.fromDist) * k);
+    globeSpin.quaternion.copy(flight.from).slerp(flight.to, k);
+    ctl.setDistance(flight.fromDist + (flight.toDist - flight.fromDist) * k);
     if (t >= 1) {
       flight.resolve();
       flight = null;
@@ -185,11 +194,12 @@ export function createGlobe(
     if (flight) flight.resolve(); // supersede an in-progress flight
     ctl.flush();
     const [lat, lng] = rec.latlng;
-    // Direction from the orbit target through the country's surface point, extended to the camera.
-    const toDir = rig.localToWorld(latLngToVector3(lat, lng, 1)).sub(ORBIT_TARGET).normalize();
-    const fromDir = camera.position.clone().sub(ORBIT_TARGET);
-    const fromDist = fromDir.length();
-    fromDir.normalize();
+    const from = globeSpin.quaternion.clone();
+    // Where the country is now, in the tilt frame, and the shortest turn that puts it centre stage.
+    latLngToVector3(lat, lng, 1, tmpV).applyQuaternion(from).normalize();
+    const to = new Quaternion().setFromUnitVectors(tmpV, FACING_POINT).multiply(from);
+    levelUp(to);
+    const fromDist = ctl.distance;
     let toDist = fromDist;
     if ((rec.area ?? Infinity) < SMALL_COUNTRY_AREA) toDist = Math.min(fromDist, SMALL_COUNTRY_DISTANCE);
     toDist = clamp(toDist, MIN_DISTANCE, MAX_DISTANCE);
@@ -199,8 +209,8 @@ export function createGlobe(
       flight = {
         start: performance.now(),
         duration: reducedMotion ? 0 : (o.duration ?? 900),
-        fromDir,
-        rotation: new Quaternion().setFromUnitVectors(fromDir, toDir),
+        from,
+        to,
         fromDist,
         toDist,
         resolve,
@@ -284,9 +294,12 @@ export function createGlobe(
     if (ctl.update(dt)) moved = true;
     // Life drives its own frames only while it is close enough to be seen; when it
     // returns false the loop goes back to sleep exactly as before.
-    if (life.update(dt, camera.position.distanceTo(ORBIT_TARGET))) moved = true;
+    if (life.update(dt, ctl.distance)) moved = true;
     if (!moved && !needsRender) return;
-    orient();
+    // The sphere moves now, not the camera, so picking needs fresh world matrices before it
+    // raycasts — and the camera is outside the scene graph, so it updates separately.
+    scene.updateMatrixWorld();
+    camera.updateMatrixWorld();
     if (moved) picking.refresh();
     renderer.render(scene, camera);
     needsRender = false;
@@ -330,8 +343,9 @@ export function createGlobe(
     void flyTo(opts.initialIso3, { duration: 0 });
   } else {
     // Classic catalogue pose: the Atlantic in the middle, Americas left, Europe/Africa right.
-    const dir = rig.localToWorld(latLngToVector3(22, -35, 1)).sub(ORBIT_TARGET).normalize();
-    camera.position.copy(ORBIT_TARGET).addScaledVector(dir, DEFAULT_DISTANCE);
+    // A pure spin about the globe's own axis, so at rest the poles sit in the cradle's pins
+    // exactly as a real globe's do.
+    globeSpin.rotation.y = spinForLongitude(-35);
   }
   if (!document.hidden) start();
 

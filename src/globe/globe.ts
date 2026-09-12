@@ -4,17 +4,24 @@
  * Scene graph
  * -----------
  *   scene
- *   ├─ rig            tilted 23.5° about Z; its local +Y is the globe's spin axis
- *   │  ├─ sphere      the map (raycast target)
- *   │  ├─ highlight   translucent overlay sphere (added by highlight.ts)
- *   │  ├─ labels      label sprites (added by labels.ts)
- *   │  └─ standRig    meridian ring, pole caps, stem, base, key light
- *   └─ camera         camera.up == the tilted axis, so OrbitControls orbits around it
+ *   ├─ rig              tilted 23.5° about Z, and then never touched again;
+ *   │  │                its local +Y is the globe's spin axis
+ *   │  ├─ globeSpin     carries *all* user rotation, as a quaternion
+ *   │  │  ├─ sphere     the map (raycast target)
+ *   │  │  ├─ highlight  translucent overlay sphere (added by highlight.ts)
+ *   │  │  └─ life       ships and animals (added by life.ts)
+ *   │  └─ standRig      meridian ring, pole pins, caps, stem, base, key light — never moves
+ *   └─ camera           fixed pose; the only motion left to it is dollying along VIEW_DIR
  *
- * The camera orbits the globe; the globe itself never rotates. To make the
- * stand look fixed while the user "spins the globe", `standRig` is rotated
- * about the axis by the camera's azimuth every frame (see index.ts), and the
- * camera is rolled so the base always appears upright on screen.
+ * The cradle is furniture. It is bolted to the world, and so is the camera: dragging
+ * rotates `globeSpin`, exactly as your hand turns a real globe inside its ring. There is
+ * no counter-rotation and no camera roll to keep the base upright any more — the base is
+ * upright because nothing ever tips it.
+ *
+ * One deliberate consequence: the pins belong to the cradle, so once the user rolls the
+ * globe about the camera's right vector the geographic poles no longer sit in them. A
+ * sphere turning inside a thin ring reads perfectly well, and chasing the poles with the
+ * cradle would put the furniture back in motion — which is the thing being fixed here.
  */
 import {
   AmbientLight,
@@ -39,32 +46,73 @@ import {
   type Object3D,
 } from 'three';
 import type { GlobeTheme } from '../core/themes';
-import { TILT } from './math';
+import { DEG, TILT } from './math';
 import { applySurfaceMaterial } from './surface';
 
 export const GLOBE_RADIUS = 1;
 export const RING_RADIUS = 1.075;
 
 /**
- * Direction that must appear vertical on screen, expressed in `standRig`
- * local space: world +Y at azimuth 0 (the base's up axis).
+ * The base's up axis, in `rig` local space. `rig` is tilted by -TILT, so this lands on world
+ * +Y: the base stands upright on screen with the camera simply held level. Nothing projects
+ * it any more — it is geometry, used to build the stand and to aim the fill light.
  */
 export const STAND_UP = new Vector3(-Math.sin(TILT), Math.cos(TILT), 0);
-/** Spin axis in world space (also the camera's up vector). */
+/** Spin axis in world space. */
 export const AXIS = new Vector3(Math.sin(TILT), Math.cos(TILT), 0);
 /**
- * Orbit target: a point on the axis a little below the globe's centre, so the default framing
- * leaves room for the base underneath. Staying on the axis keeps "orbit == spin the globe" exact.
+ * What the camera looks at: a point on the axis a little below the globe's centre, so the
+ * framing leaves room for the base underneath.
  */
-export const ORBIT_TARGET = AXIS.clone().multiplyScalar(-0.2);
-/** Default camera distance from ORBIT_TARGET. */
+export const VIEW_TARGET = AXIS.clone().multiplyScalar(-0.2);
+/** Default camera distance from VIEW_TARGET. */
 export const DEFAULT_DISTANCE = 3.9;
+
+/**
+ * Elevation of the fixed viewpoint above the globe's equatorial plane, measured at the spin
+ * axis. Together with the azimuth below it reproduces, to the decimal, the pose the orbiting
+ * camera used to open in — so the globe at rest looks exactly as it always did.
+ */
+const VIEW_ELEVATION = 31.7847 * DEG;
+/**
+ * Unit vector from VIEW_TARGET towards the camera. It lies in the stand's own meridian plane
+ * (x = 0 in `rig` local space, i.e. the cradle's azimuth 0), which is precisely what lets the
+ * base read upright with the camera held level and no roll applied.
+ */
+export const VIEW_DIR = new Vector3(0, Math.sin(VIEW_ELEVATION), Math.cos(VIEW_ELEVATION)).applyAxisAngle(
+  new Vector3(0, 0, 1),
+  -TILT,
+);
+
+/**
+ * The point of the globe that is dead centre of the fixed view, in `rig` local space: where
+ * the ray from VIEW_TARGET towards the camera meets the unit sphere. `flyTo` turns a country
+ * onto exactly this point. It depends only on the view ray, so zooming never moves it.
+ */
+export const FACING_POINT = (() => {
+  const b = VIEW_TARGET.dot(VIEW_DIR);
+  const t = -b + Math.sqrt(b * b + GLOBE_RADIUS * GLOBE_RADIUS - VIEW_TARGET.lengthSq());
+  const world = VIEW_TARGET.clone().addScaledVector(VIEW_DIR, t);
+  return world.applyAxisAngle(new Vector3(0, 0, 1), TILT).normalize();
+})();
+
+/**
+ * The spin, about the globe's own axis, that brings `lng` onto the camera's meridian. A point
+ * at longitude L sits at rig azimuth 90° + L, and the camera sits at azimuth 0.
+ */
+export function spinForLongitude(lng: number): number {
+  return -(Math.PI / 2 + lng * DEG);
+}
 
 export interface GlobeScene {
   renderer: WebGLRenderer;
   scene: Scene;
   camera: PerspectiveCamera;
+  /** The tilt frame. Static: it is set once and never rotated. */
   rig: Group;
+  /** Everything that turns when the user spins the globe. */
+  globeSpin: Group;
+  /** The cradle. Static: ring, pins, caps, stem, base and the key light. */
   standRig: Group;
   /** Physical, not standard: a varnished paper globe has a coat over the ink (see surface.ts). */
   sphere: Mesh<SphereGeometry, MeshPhysicalMaterial>;
@@ -177,14 +225,20 @@ export function createGlobeScene(
   container.appendChild(renderer.domElement);
 
   const scene = new Scene();
+  // Fixed pose, set once. `camera.up` stays world +Y, which is where STAND_UP lands, so the
+  // base is upright on screen without a roll. Only `position` moves after this, and only
+  // along VIEW_DIR.
   const camera = new PerspectiveCamera(38, 1, 0.1, 50);
-  camera.up.copy(AXIS);
-  camera.position.copy(ORBIT_TARGET).add(new Vector3(0, 0.55, DEFAULT_DISTANCE));
-  camera.lookAt(ORBIT_TARGET);
+  camera.position.copy(VIEW_TARGET).addScaledVector(VIEW_DIR, DEFAULT_DISTANCE);
+  camera.lookAt(VIEW_TARGET);
 
   const rig = new Group();
   rig.rotation.z = -TILT; // rotates local +Y onto AXIS
   scene.add(rig);
+
+  const globeSpin = new Group();
+  globeSpin.name = 'globeSpin';
+  rig.add(globeSpin);
 
   const mapTexture = new CanvasTexture(mapCanvas);
   mapTexture.colorSpace = SRGBColorSpace;
@@ -195,7 +249,7 @@ export function createGlobeScene(
   const sphereMat = new MeshPhysicalMaterial({ map: mapTexture, color: theme.sphereTint });
   applySurfaceMaterial(sphereMat, theme);
   const sphere = new Mesh(new SphereGeometry(GLOBE_RADIUS, 128, 96), sphereMat);
-  rig.add(sphere);
+  globeSpin.add(sphere);
 
   const stand = buildStand(theme);
   const standRig = stand.group;
@@ -236,6 +290,7 @@ export function createGlobeScene(
     scene,
     camera,
     rig,
+    globeSpin,
     standRig,
     sphere,
     mapTexture,
