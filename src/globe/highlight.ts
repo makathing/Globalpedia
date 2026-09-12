@@ -1,9 +1,16 @@
 /**
  * Hover / selection highlight: a low-res transparent canvas texture on a
  * slightly larger sphere, redrawn only when the highlighted countries change.
+ *
+ * Two marks, not one. The wash over the polygon is unchanged; the new one is an underline
+ * ruled beneath the country's **printed** name. Baked type cannot restyle itself the way the
+ * old sprites did — there is no hover texture to swap — so the acknowledgement that "this is
+ * the name you are pointing at" has to come from this layer instead. It is also the only
+ * highlight a country with no polygon at this resolution (Tuvalu, Monaco…) ever gets.
  */
 import { CanvasTexture, Mesh, MeshBasicMaterial, SphereGeometry, SRGBColorSpace } from 'three';
 import type { GlobeTheme } from '../core/themes';
+import type { PlacedLabel } from './label-layout';
 import type { GlobeTextures } from './texture';
 import { traceGeometry } from './texture';
 
@@ -34,8 +41,12 @@ export function createHighlightLayer(textures: GlobeTextures, theme: GlobeTheme,
   );
   mesh.renderOrder = 1;
   mesh.visible = false;
-  // Never a raycast target: picking goes straight to the map sphere and the labels.
+  // Never a raycast target: picking goes straight to the map sphere.
   mesh.raycast = () => {};
+
+  const layout = textures.labels;
+  /** Reference-raster pixels → this canvas's pixels. */
+  const k = width / layout.width;
 
   let curHover: string | null = null;
   let curSelected: string | null = null;
@@ -53,13 +64,51 @@ export function createHighlightLayer(textures: GlobeTextures, theme: GlobeTheme,
     ctx.stroke();
   }
 
+  /**
+   * Rule a line under a printed name. Drawn twice — a wide, faint pass and a narrow solid
+   * one — which is what makes it read as a soft mark under the type rather than a box edge,
+   * and which survives this canvas being a quarter of the map's resolution.
+   *
+   * The line's length is the name's stretched box width, so on the sphere it comes out the
+   * same proportion of the name at every latitude, exactly like the glyphs above it.
+   */
+  function underline(label: PlacedLabel, soft: string, solid: string): void {
+    const half = (label.boxW * k) / 2 - label.fontPx * k * 0.2;
+    if (half <= 0) return;
+    const y = (label.y + label.fontPx * 0.62) * k;
+    const w = label.fontPx * k;
+    for (const dx of [0, -width, width]) {
+      const x = label.x * k + dx;
+      if (x + half < 0 || x - half > width) continue;
+      ctx.beginPath();
+      ctx.moveTo(x - half, y);
+      ctx.lineTo(x + half, y);
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.3;
+      ctx.strokeStyle = soft;
+      ctx.lineWidth = Math.max(2.5, w * 0.3);
+      ctx.stroke();
+      ctx.globalAlpha = 0.95;
+      ctx.strokeStyle = solid;
+      ctx.lineWidth = Math.max(1, w * 0.1);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
   /** Unconditional repaint of the current hover/selection in the current colours. */
   function repaint(): void {
     ctx.clearRect(0, 0, width, height);
     if (curHover && curHover !== curSelected) {
       paint(curHover, colors.highlightHoverFill, colors.highlightHoverLine, 1.6);
+      const label = layout.byIso.get(curHover);
+      if (label) underline(label, colors.labelHalo, colors.labelHover);
     }
-    if (curSelected) paint(curSelected, colors.highlightSelFill, colors.highlightSelLine, 2.4);
+    if (curSelected) {
+      paint(curSelected, colors.highlightSelFill, colors.highlightSelLine, 2.4);
+      const label = layout.byIso.get(curSelected);
+      if (label) underline(label, colors.labelHover, colors.labelInk);
+    }
     mesh.visible = Boolean(curHover || curSelected);
     texture.needsUpdate = true;
   }

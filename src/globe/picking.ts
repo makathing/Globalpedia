@@ -1,17 +1,19 @@
 /**
- * Pointer → country. Raycasts visible label sprites first, then the map sphere
- * (UV → ID map). Emits hover changes and click selections through callbacks;
- * index.ts turns those into bus events.
+ * Pointer → country. One raycast against the map sphere; its UV goes straight to the ID map.
+ * Emits hover changes and click selections through callbacks; index.ts turns those into bus
+ * events.
+ *
+ * There is nothing else to hit any more. The names are printed into the raster, so their pick
+ * targets are boxes stamped into that same index (`texture.ts`) — a name is now *part of the
+ * map*, which is why a single sphere hit answers every question.
  */
-import { Raycaster, Vector2, type Camera, type Mesh, type Sprite } from 'three';
-import type { LabelSystem } from './labels';
+import { Raycaster, Vector2, type Camera, type Mesh } from 'three';
 import { lookupId, type IdMap } from './texture';
 
 export interface PickingOptions {
   dom: HTMLElement;
   camera: Camera;
   sphere: Mesh;
-  labels: LabelSystem;
   idMap: IdMap;
   onHover(iso3: string | null): void;
   onSelect(iso3: string): void;
@@ -45,15 +47,10 @@ export function createPicking(o: PickingOptions): Picking {
     return true;
   }
 
-  /** What is under the pointer: a label's country, the country under the sphere UV, or nothing. */
+  /** What is under the pointer: the country under the sphere UV, or nothing. */
   function pick(clientX: number, clientY: number): string | null {
     if (!toNdc(clientX, clientY)) return null;
     raycaster.setFromCamera(ndc, o.camera);
-    const labelHits = raycaster.intersectObjects<Sprite>(o.labels.pickable, false);
-    if (labelHits.length) {
-      const iso3 = o.labels.iso3Of(labelHits[0].object);
-      if (iso3) return iso3;
-    }
     const hits = raycaster.intersectObject(o.sphere, false);
     const uv = hits[0]?.uv;
     return uv ? lookupId(o.idMap, uv.x, uv.y) : null;

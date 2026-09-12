@@ -15,7 +15,6 @@ import type { CountryRecord } from '../core/types';
 import { createControls, MAX_DISTANCE, MIN_DISTANCE } from './controls';
 import { createGlobeScene, DEFAULT_DISTANCE, ORBIT_TARGET, STAND_UP } from './globe';
 import { createHighlightLayer } from './highlight';
-import { createLabels } from './labels';
 import { clamp, easeInOutCubic, latLngToVector3 } from './math';
 import { createPicking } from './picking';
 import { applySurfaceMaterial } from './surface';
@@ -97,9 +96,6 @@ export function createGlobe(
   const highlight = createHighlightLayer(tex, theme);
   rig.add(highlight.mesh);
 
-  const labels = createLabels(countries, theme);
-  rig.add(labels.group);
-
   const ctl = createControls(camera, renderer.domElement, opts.autoRotate ?? true);
   scene.updateMatrixWorld(true);
 
@@ -115,10 +111,8 @@ export function createGlobe(
     dom: renderer.domElement,
     camera,
     sphere,
-    labels,
     idMap: tex.idMap,
     onHover(iso3) {
-      labels.setHover(iso3);
       highlight.set(iso3, selected);
       needsRender = true;
       bus.emit('globe:hover', { iso3 });
@@ -131,7 +125,6 @@ export function createGlobe(
 
   function setSelected(iso3: string | null): void {
     selected = iso3;
-    labels.setSelected(iso3);
     highlight.set(picking.hovered, iso3);
     ctl.setSelected(iso3 !== null);
     needsRender = true;
@@ -213,7 +206,7 @@ export function createGlobe(
   // --- theme switching ------------------------------------------------------------------------
   // Two phases, because a full 8192x4096 re-raster is a main-thread stall of tens of
   // milliseconds and the click must feel instant:
-  //   1. synchronous — materials, lights, labels and highlight (all cheap);
+  //   1. synchronous — materials, lights and highlight (all cheap);
   //   2. deferred and debounced — the map raster, for the theme the viewer settled on.
   // Neither phase touches the camera, the pick index, the CanvasTexture object or any
   // material instance, so an in-flight flyTo and picking both carry on undisturbed.
@@ -230,7 +223,6 @@ export function createGlobe(
     gs.hemiLight.groundColor.set(t.hemiLight.ground);
     gs.hemiLight.intensity = t.hemiLight.intensity;
     gs.ambientLight.intensity = t.ambient;
-    labels.restyle(t);
     highlight.restyle(t);
     // The varnish, the fibre relief and the gloss are material state, not raster state, so
     // they change on the click rather than waiting for phase 2. This also sets the tint,
@@ -286,7 +278,6 @@ export function createGlobe(
     if (ctl.update(dt)) moved = true;
     if (!moved && !needsRender) return;
     orient();
-    labels.update(camera, container.clientHeight || 1);
     if (moved) picking.refresh();
     renderer.render(scene, camera);
     needsRender = false;
@@ -356,7 +347,6 @@ export function createGlobe(
       for (const off of offs) off();
       picking.dispose();
       ctl.dispose();
-      labels.dispose();
       highlight.dispose();
       gs.dispose();
     },

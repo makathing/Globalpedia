@@ -9,6 +9,7 @@ import { feature, mesh, neighbors } from 'topojson-client';
 import type { GeometryCollection, GeometryObject, Objects, Topology } from 'topojson-specification';
 import type { CountryRecord } from '../core/types';
 import { DEFAULT_THEME, themeById, type GlobeTheme } from '../core/themes';
+import { labelFont, layoutLabels, type LabelLayout } from './label-layout';
 import { projectX, projectY } from './math';
 import { CAP_DEGREES, compositeSurface, drawAging, drawGoreSeams, drawPolarCaps } from './surface';
 
@@ -42,6 +43,12 @@ export interface GlobeTextures {
   idMap: IdMap;
   /** Keyed by ISO3, for the highlight layer. */
   shapes: Map<string, CountryShape>;
+  /**
+   * Where every country name is printed. Computed once — it depends on the data and on
+   * nothing else — so a theme switch re-inks the same names in exactly the same places
+   * and the pick index never has to be rebuilt.
+   */
+  labels: LabelLayout;
   /**
    * Repaint the visible map **into the existing `map` canvas** with another theme.
    * The adjacency colouring and the pick index are NOT recomputed — only the
@@ -230,6 +237,75 @@ interface PaintPaths {
 }
 
 /**
+ * Print the country names into the raster.
+ *
+ * Called between the border passes and the ink/paper/age passes, which is the whole point:
+ * a name drawn *after* the mottle, halftone and foxing floats above the paper like an
+ * overlay, and a name drawn *before* them is printed matter that ages with everything else.
+ *
+ * Each name is drawn under `translate → rotate → scale(scaleX, 1)`, so the halo and the
+ * ink-spread hairline are stretched with the glyphs. That is deliberate: the sphere divides
+ * everything here by `scaleX` again, so a halo that is uniform *on the globe* has to be
+ * elliptical *in the texture*.
+ */
+function drawLabels(
+  ctx: CanvasRenderingContext2D,
+  layout: LabelLayout,
+  width: number,
+  theme: GlobeTheme,
+): void {
+  const k = width / layout.width; // reference raster → this raster
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.globalCompositeOperation = 'source-over';
+
+  for (const label of layout.labels) {
+    const fontPx = label.fontPx * k;
+    if (fontPx < 3) continue; // below this the glyphs are mush; nothing is lost by omitting them
+    const font = labelFont(fontPx);
+    // One extra copy shifted a full raster width, so a name straddling the antimeridian
+    // prints on both edges and the seam stays invisible.
+    const half = (label.boxW * k) / 2;
+    const xs =
+      label.x * k - half < 0
+        ? [label.x * k, label.x * k + width]
+        : label.x * k + half > width
+          ? [label.x * k, label.x * k - width]
+          : [label.x * k];
+
+    for (const x of xs) {
+      ctx.setTransform(label.scaleX, 0, 0, 1, x, label.y * k);
+      ctx.rotate(label.tilt);
+      ctx.font = font;
+
+      // A thin halo, not a slab: enough to hold the name together where it crosses a
+      // coastline, not enough to read as a sticker.
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = fontPx * 0.15;
+      ctx.strokeStyle = theme.labelHalo;
+      ctx.strokeText(label.name, 0, 0);
+
+      ctx.fillStyle = theme.labelInk;
+      ctx.fillText(label.name, 0, 0);
+
+      // Ink spread: a sub-pixel hairline of the same ink bleeding off the letterforms, so
+      // the type thickens fractionally instead of sitting on the paper like vector art.
+      ctx.globalAlpha = 0.34;
+      ctx.lineWidth = label.bleed * k;
+      ctx.strokeStyle = theme.labelInk;
+      ctx.strokeText(label.name, 0, 0);
+    }
+  }
+
+  ctx.restore();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+}
+
+/**
  * Paint the visible map into `ctx`, which must already be `width` × `width / 2`.
  * Every colour comes from `theme`; the per-country palette *indices* do not, so a
  * repaint keeps the map's colouring topology and swaps only the hues.
@@ -243,6 +319,7 @@ function paintMap(
   ctx: CanvasRenderingContext2D,
   shapesByIndex: (CountryShape | null)[],
   paths: PaintPaths,
+  labels: LabelLayout,
   width: number,
   theme: GlobeTheme,
 ): void {
@@ -306,6 +383,10 @@ function paintMap(
   ctx.restore();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 
+  // The names, over the line-work but under every ink and paper pass below, so they age
+  // with the print instead of floating on top of it.
+  drawLabels(ctx, labels, width, theme);
+
   // The physical surface, in the order a real object acquires it.
   compositeSurface(ctx, width, height, theme.surface, theme.grainAlpha);
   drawAging(ctx, width, height, s, theme);
@@ -329,7 +410,7 @@ function encodeId(i: number): [number, number, number] {
   return [i & 255, (i >> 8) & 255, (i * 97 + 31) & 255];
 }
 
-function buildIdMap(shapesByIndex: (CountryShape | null)[], width: number): IdMap {
+function buildIdMap(shapesByIndex: (CountryShape | null)[], labels: LabelLayout, width: number): IdMap {
   const height = width / 2;
   const [canvas, ctx] = makeCanvas(width, height);
   ctx.imageSmoothingEnabled = false;
@@ -337,10 +418,12 @@ function buildIdMap(shapesByIndex: (CountryShape | null)[], width: number): IdMa
   ctx.fillRect(0, 0, width, height);
 
   const iso3s: string[] = [];
+  const byIso = new Map<string, number>(); // ISO3 → 1-based index
   const lookup = new Map<number, number>(); // packed rgb → 1-based index
   for (const shape of shapesByIndex) {
     if (!shape) continue;
     const idx = iso3s.push(shape.iso3);
+    byIso.set(shape.iso3, idx);
     const [r, g, b] = encodeId(idx);
     lookup.set((r << 16) | (g << 8) | b, idx);
     const css = `rgb(${r},${g},${b})`;
@@ -362,7 +445,56 @@ function buildIdMap(shapesByIndex: (CountryShape | null)[], width: number): IdMa
     if (idx !== undefined) index[p] = idx;
   }
   canvas.width = canvas.height = 1; // release the backing store eagerly
+
+  stampLabelBoxes(index, iso3s, byIso, labels, width, height);
   return { width, height, index, iso3s };
+}
+
+/**
+ * Make the printed names clickable — **only where nothing else already is**.
+ *
+ * A name is now the one part of a country a viewer can reliably aim at, so its box becomes
+ * a pick target. The `=== 0` guard is the whole safety property: a label can take ocean, but
+ * it can never take a pixel that belongs to a real polygon, so no country ever loses area to
+ * a neighbour's name and the existing encoding and 3×3 fallback are untouched. Countries with
+ * no polygon at this resolution (Tuvalu, Nauru, Monaco…) get an index appended here and become
+ * pickable for the first time.
+ *
+ * The boxes are stamped in print order, which is descending area, so where two boxes were
+ * allowed to touch the larger country wins — the same rule the layout itself used.
+ */
+function stampLabelBoxes(
+  index: Uint16Array,
+  iso3s: string[],
+  byIso: Map<string, number>,
+  labels: LabelLayout,
+  width: number,
+  height: number,
+): void {
+  const k = width / labels.width;
+  for (const label of labels.labels) {
+    let id = byIso.get(label.iso3);
+    if (id === undefined) {
+      id = iso3s.push(label.iso3);
+      byIso.set(label.iso3, id);
+    }
+    const halfW = (label.boxW * k) / 2;
+    const halfH = (label.boxH * k) / 2;
+    const cx = label.x * k;
+    const cy = label.y * k;
+    const y0 = Math.max(0, Math.round(cy - halfH));
+    const y1 = Math.min(height - 1, Math.round(cy + halfH));
+    const x0 = Math.round(cx - halfW);
+    const x1 = Math.round(cx + halfW);
+    for (let y = y0; y <= y1; y++) {
+      const row = y * width;
+      for (let x = x0; x <= x1; x++) {
+        const xx = ((x % width) + width) % width; // wrap across the antimeridian
+        const p = row + xx;
+        if (index[p] === 0) index[p] = id;
+      }
+    }
+  }
 }
 
 /**
@@ -433,6 +565,10 @@ export function buildGlobeTextures(
     return shape;
   });
 
+  // Deterministic, theme-independent and camera-independent: computed once, consumed by the
+  // paint, the pick index and the highlight layer alike.
+  const labels = layoutLabels(countries);
+
   const width = options.mapWidth;
   const [map, mapCtx] = makeCanvas(width, width / 2);
   // Theme-independent and costly: computed once, reused by every repaint. The arc mesh AND
@@ -449,17 +585,18 @@ export function buildGlobeTextures(
       return path;
     }),
   };
-  paintMap(mapCtx, shapesByIndex, paths, width, options.theme);
+  paintMap(mapCtx, shapesByIndex, paths, labels, width, options.theme);
 
   const pickable = shapesByIndex.map((s) => (s && shapes.has(s.iso3) ? s : null));
-  const idMap = buildIdMap(pickable, options.idWidth ?? 4096);
+  const idMap = buildIdMap(pickable, labels, options.idWidth ?? 4096);
 
   return {
     map,
     idMap,
     shapes,
+    labels,
     redraw(theme) {
-      paintMap(mapCtx, shapesByIndex, paths, width, theme);
+      paintMap(mapCtx, shapesByIndex, paths, labels, width, theme);
     },
   };
 }
