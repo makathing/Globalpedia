@@ -12,7 +12,8 @@
 import { bus } from './core/events';
 import type { CountryRecord } from './core/types';
 import { loadAll, fetchCountryImages } from './data';
-import { createGlobe } from './globe';
+import { createGlobe, type GlobeHandle } from './globe';
+import { isThemeId } from './core/themes';
 import { createUI } from './ui';
 
 function $(id: string): HTMLElement {
@@ -38,6 +39,7 @@ async function boot(): Promise<void> {
   const initial = fromHash();
 
   let countries: Record<string, CountryRecord> = {};
+  let globe: GlobeHandle | null = null;
 
   try {
     const data = await loadAll(bus);
@@ -45,9 +47,13 @@ async function boot(): Promise<void> {
     ui.setCountries(countries);
     // A deep-linked country is framed at construction, so the page never flies from
     // the default pose on load.
-    createGlobe($('globe'), data.world, countries, bus, {
+    // The pre-paint script in index.html has already resolved and stamped the theme,
+    // so boot the globe in it rather than in the default and re-theming a frame later.
+    const stamped = document.documentElement.dataset.theme;
+    globe = createGlobe($('globe'), data.world, countries, bus, {
       autoRotate: true,
       initialIso3: countries[initial] ? initial : undefined,
+      theme: isThemeId(stamped) ? stamped : undefined,
     });
   } catch (err) {
     console.error('Globalpedia could not load', err);
@@ -55,6 +61,9 @@ async function boot(): Promise<void> {
     return;
   }
   ui.setLoading(false);
+  // Exposed so tests can hold the globe still; auto-rotate resuming on its own timer
+  // otherwise makes "did anything move?" checks racy.
+  if (window.__gp) window.__gp.globe = globe;
 
   // Photos: fetched live from Wikipedia, one request in flight at a time.
   let imageAbort: AbortController | null = null;
@@ -97,7 +106,7 @@ async function boot(): Promise<void> {
 // Exposed for the smoke test and for tinkering in the console.
 declare global {
   interface Window {
-    __gp?: { bus: typeof bus };
+    __gp?: { bus: typeof bus; globe?: GlobeHandle | null };
   }
 }
 window.__gp = { bus };

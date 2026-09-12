@@ -143,9 +143,10 @@ try {
   await page.screenshot({ path: `${OUT}03-japan.png` });
 
   // --- printed labels and autonomous life ---------------------------------------------------
-  // Select a country first: that pauses auto-rotate, so anything still moving is the life layer.
-  await page.evaluate(() => window.__gp?.bus.emit('globe:select', { iso3: 'PRT' }));
-  await page.waitForTimeout(2500);
+  // Hold the globe still for the duration: auto-rotate resumes on its own timer and
+  // would otherwise land between two screenshots and masquerade as movement.
+  await page.evaluate(() => window.__gp?.globe?.setAutoRotate(false));
+  await page.waitForTimeout(3000);
 
   // At the default pose the creatures are out of range, so consecutive frames are identical.
   const farA = await page.screenshot({ clip });
