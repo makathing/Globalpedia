@@ -378,15 +378,6 @@ function surfaceTile(surface: SurfaceTheme, grain: number): HTMLCanvasElement {
  * The whole printed surface in a single full-raster 'overlay' pass: ink density variation
  * across fills, ocean and line-work alike, the fibre of the paper, and the offset rosette.
  */
-/**
- * How far from each pole the surface tooth is faded out. Fine high-frequency detail in u is
- * exactly what the mip/anisotropy fallback undersamples into azimuthal noise — the pole
- * starburst — so the strongest such detail on the globe, the paper tooth, is ramped off toward
- * the singularity instead of being painted into it and washed over afterwards.
- */
-const POLE_SOFTEN_DEGREES = 20;
-const POLE_SLABS = 12;
-
 export function compositeSurface(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -398,26 +389,9 @@ export function compositeSurface(
   if (!pattern) return;
   ctx.save();
   ctx.globalCompositeOperation = 'overlay';
-  ctx.fillStyle = pattern;
-
-  const band = Math.min(height / 2, (POLE_SOFTEN_DEGREES / 180) * height);
-
-  // Everything away from the poles, in one full-strength pass.
   ctx.globalAlpha = 1;
-  ctx.fillRect(0, band, width, height - 2 * band);
-
-  // The polar bands, ramped down toward the singularity. Slabs rather than a gradient because
-  // the fill is a pattern: `globalAlpha` is the only handle on its strength.
-  const slabH = band / POLE_SLABS;
-  for (const north of [true, false]) {
-    for (let k = 0; k < POLE_SLABS; k++) {
-      const t = (k + 0.5) / POLE_SLABS; // 0 at the pole, 1 at the band edge
-      ctx.globalAlpha = 0.05 + 0.95 * Math.pow(t, 2.6);
-      const y = north ? k * slabH : height - (k + 1) * slabH;
-      ctx.fillRect(0, y, width, slabH + 1);
-    }
-  }
-
+  ctx.fillStyle = pattern;
+  ctx.fillRect(0, 0, width, height);
   ctx.restore();
 }
 
@@ -618,7 +592,7 @@ export const CAP_DEGREES = 5.5;
  * geography. It also happens to be true of the object — the gores bunch and grey off toward the
  * poles, which is the same thing `aging` already does there.
  */
-const CAP_HAZE_DEGREES = 18;
+const CAP_HAZE_DEGREES = 20;
 /** Below this, a theme's gores are too plain to have a decorated cap — rings only. */
 const CAP_DECOR_GORES = 0.25;
 
@@ -638,6 +612,22 @@ function mix(hex: string, target: [number, number, number], k: number): [number,
 }
 
 const rgba = (c: [number, number, number], a: number): string => `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`;
+
+/**
+ * Mean colour of two raster rows. The map canvas is `willReadFrequently`, so this is a cheap
+ * read, and it is what lets the polar haze match whatever it is sitting on instead of tinting it.
+ */
+function sampleRow(ctx: CanvasRenderingContext2D, width: number, y0: number, y1: number): [number, number, number] {
+  let r = 0, g = 0, b = 0, n = 0;
+  for (const y of [y0, y1]) {
+    const d = ctx.getImageData(0, Math.max(0, y), width, 1).data;
+    // Every 64th pixel is plenty for a mean and keeps this off the critical path.
+    for (let i = 0; i < d.length; i += 4 * 64) {
+      r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
+    }
+  }
+  return n ? [Math.round(r / n), Math.round(g / n), Math.round(b / n)] : [128, 128, 128];
+}
 
 /**
  * The paper disc glued over each pole. Drawn LAST in the paint, over the surface composite.
@@ -687,10 +677,28 @@ export function drawPolarCaps(
     ctx.globalCompositeOperation = 'source-over';
 
     // The haze first, so the opaque disc lands cleanly on top of it.
+    //
+    // This is what actually kills the starburst outside the cap, and it does it by removing
+    // CONTRAST, not by covering anything: the rays are fine high-frequency detail in u being
+    // undersampled, and a wash at alpha a leaves only (1-a) of it to alias. That means the wash
+    // has to be strong, which would normally discolour the whole polar region — so it is tinted
+    // with the paper it is sitting on, sampled from the raster itself. Ocean under the north
+    // cap, Antarctica under the south, and the tone barely moves either way.
+    //
+    // One gradient fillRect per pole. Fading the surface tile itself in latitude slabs was the
+    // obvious alternative and cost 495 ms at 8k: a pattern fill carries ~21 ms of fixed setup,
+    // so what matters is the NUMBER of pattern fills, not the pixels they cover.
     const hazeH = (CAP_HAZE_DEGREES / 180) * height;
+    const local = sampleRow(ctx, width, Math.round(capH), Math.round(capH + (hazeH - capH) * 0.5));
+    const tint: [number, number, number] = [
+      Math.round((local[0] + capRgb[0]) / 2),
+      Math.round((local[1] + capRgb[1]) / 2),
+      Math.round((local[2] + capRgb[2]) / 2),
+    ];
     const haze = ctx.createLinearGradient(0, capH, 0, hazeH);
-    haze.addColorStop(0, rgba(capRgb, 0.3 + 0.2 * gores));
-    haze.addColorStop(1, rgba(capRgb, 0));
+    haze.addColorStop(0, rgba(tint, 0.78));
+    haze.addColorStop(0.45, rgba(tint, 0.34));
+    haze.addColorStop(1, rgba(tint, 0));
     ctx.globalAlpha = 1;
     ctx.fillStyle = haze;
     ctx.fillRect(0, capH, width, hazeH - capH);
