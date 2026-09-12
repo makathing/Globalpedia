@@ -215,15 +215,24 @@ function latticeResidues(b1: [number, number], b2: [number, number], period: num
 /**
  * Two screens at ≈ ±26.57° and DIFFERENT rulings. Same-pitch mirrored screens interfere on a
  * regular beat and read as polka dots rather than print; different rulings give the irregular
- * rosette real four-colour work has. Both periods are powers of two so both tile the 2048² tile.
+ * rosette real four-colour work has.
+ *
+ * The whole rosette is drawn ONCE into a 64² tile and then tiled. Both rulings are powers of
+ * two, so 64 px is exactly one period of the coarse screen and two of the fine one — the tile
+ * is seamless, and 64 divides 2048. Drawing the dots directly into the 2048² surface tile
+ * instead meant ~51 000 individual arcs and measured **7.8 seconds per theme**, which stalled
+ * startup and would have stalled every first theme switch.
  */
-function drawRosette(ctx: CanvasRenderingContext2D, size: number, strength: number): void {
+const ROSETTE_TILE = 64;
+let rosetteTile: HTMLCanvasElement | null = null;
+
+function getRosetteTile(): HTMLCanvasElement {
+  if (rosetteTile) return rosetteTile;
+  const [canvas, ctx] = makeTile(ROSETTE_TILE); // starts transparent; the dots are the content
   const screens = [
     { period: 64, r: 1.9, a: 0.42 },
     { period: 32, r: 1.15, a: 0.3 },
   ];
-  ctx.save();
-  // Dots sit below mid grey so the tile darkens under 'overlay', exactly like ink on paper.
   ctx.fillStyle = '#000';
   for (const sc of screens) {
     const p = sc.period / 5;
@@ -231,23 +240,36 @@ function drawRosette(ctx: CanvasRenderingContext2D, size: number, strength: numb
       [[2 * p, p], [-p, 2 * p]],
       [[2 * p, -p], [p, 2 * p]],
     ] as [[number, number], [number, number]][]) {
-      ctx.globalAlpha = Math.min(0.9, sc.a * strength);
+      ctx.globalAlpha = sc.a;
       const pts = latticeResidues(b1, b2, sc.period);
-      const cells = size / sc.period;
+      const cells = ROSETTE_TILE / sc.period;
       ctx.beginPath();
       for (let cy = 0; cy < cells; cy++) {
         for (let cx = 0; cx < cells; cx++) {
-          const ox = cx * sc.period;
-          const oy = cy * sc.period;
           for (const [px, py] of pts) {
-            ctx.moveTo(ox + px + sc.r, oy + py);
-            ctx.arc(ox + px, oy + py, sc.r, 0, Math.PI * 2);
+            const x = cx * sc.period + px;
+            const y = cy * sc.period + py;
+            ctx.moveTo(x + sc.r, y);
+            ctx.arc(x, y, sc.r, 0, Math.PI * 2);
           }
         }
       }
       ctx.fill();
     }
   }
+  rosetteTile = canvas;
+  return canvas;
+}
+
+/** Lay the cached rosette over the surface tile. Per-theme strength is the composite alpha. */
+function drawRosette(ctx: CanvasRenderingContext2D, size: number, strength: number): void {
+  const pattern = ctx.createPattern(getRosetteTile(), 'repeat');
+  if (!pattern) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = Math.min(1, strength);
+  ctx.fillStyle = pattern;
+  ctx.fillRect(0, 0, size, size);
   ctx.restore();
 }
 

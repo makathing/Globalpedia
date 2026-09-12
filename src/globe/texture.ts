@@ -141,11 +141,19 @@ function traceLines(ctx: CanvasPath, lines: GeoJSON.MultiLineString, width: numb
   }
 }
 
+/**
+ * `willReadFrequently` is load-bearing, not a hint to ignore. Both of these canvases are read
+ * back: the pick index does a full `getImageData`, and the gore seams copy a slice of the map
+ * onto itself. On a GPU-backed canvas that self-copy forces a round trip and measured **20.8 s**
+ * on a fresh 8192×4096 surface, against 104 ms once the canvas is software-backed — it was
+ * adding ~18 s to first paint. Asking for the software path up front is the standard way to say
+ * so, rather than relying on Chromium's "a readback happened, stop accelerating" heuristic.
+ */
 function makeCanvas(width: number, height: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext('2d', { alpha: false });
+  const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
   if (!ctx) throw new Error('2D canvas context unavailable');
   return [canvas, ctx];
 }
