@@ -823,6 +823,23 @@ export function createLife(idMap: IdMap, theme: GlobeTheme, opts: LifeOptions = 
   const reducedMotion =
     typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  /**
+   * The longest step the simulation will take in one call, in seconds.
+   *
+   * This is not an arbitrary guard against a backgrounded tab. Every movement test in this file
+   * checks where a step *lands*, never the path it took, and those are only the same question
+   * while a step is shorter than one pixel of the index being asked. The fastest thing on the
+   * globe is a steamer at the top of its speed range; holding it to four fifths of an index
+   * pixel means no ship can be on one side of a coastline at one sample and the other side at
+   * the next. At a 4096-column index that works out at 0.12 s, so a machine rendering slower
+   * than about 8 fps runs the creatures in slow motion rather than letting them skip — which is
+   * the right way round, since the alternative is a ship stepping clean over a headland.
+   *
+   * The host clamps its own dt below this already (globe/index.ts caps it at 0.1 s). Deriving it
+   * here keeps the guarantee a property of this module rather than of whoever calls it.
+   */
+  const maxStep = ((360 / idMap.width) * 0.8) / (KIND_SPEED.steamer * 1.25);
+
   const water = (lat: number, lng: number): boolean => isoAt(idMap, lat, lng) === null;
   const land = (lat: number, lng: number, iso: readonly string[] | null): boolean => {
     const id = isoAt(idMap, lat, lng);
@@ -1308,7 +1325,7 @@ export function createLife(idMap: IdMap, theme: GlobeTheme, opts: LifeOptions = 
     // Reduced motion: everyone is present, nobody moves. Only the fade can still change.
     if (reducedMotion) return changed;
 
-    const step = dt > 0.12 ? 0.12 : dt; // a backgrounded tab must not teleport the fleet
+    const step = dt > maxStep ? maxStep : dt;
     if (step <= 0) return changed;
     for (let i = 0; i < n; i++) {
       const c = creatures[i];
