@@ -602,9 +602,15 @@ function buildLabelInkIndex(idMap: IdMap, labels: LabelLayout, byIso: Map<string
 
   const k = width / labels.width;
   const lookup = new Map<number, number>();
+  /**
+   * Ids whose name had to be set off its own territory. Their ink is not allowed to outrank a
+   * polygon — see the decode below.
+   */
+  const displaced = new Set<number>();
   for (const label of labels.labels) {
     const id = byIso.get(label.iso3);
     if (id === undefined) continue;
+    if (label.leader) displaced.add(id);
     const [r, g, b] = encodeId(id);
     lookup.set((r << 16) | (g << 8) | b, id);
     const css = `rgb(${r},${g},${b})`;
@@ -628,16 +634,51 @@ function buildLabelInkIndex(idMap: IdMap, labels: LabelLayout, byIso: Map<string
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   const data = ctx.getImageData(0, 0, width, height).data;
+  const { index, iso3s } = idMap;
   const ink = new Uint16Array(width * height);
   for (let p = 0, i = 0; p < ink.length; p++, i += 4) {
     const packed = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
     if (packed === 0) continue;
     const id = lookup.get(packed);
-    if (id !== undefined) ink[p] = id;
+    if (id === undefined) continue;
+    if (displaced.has(id)) {
+      // A name standing on its own country may overhang a neighbour and still win the click:
+      // the letters of "Belgium" mean Belgium wherever they fall. A name that had to be moved
+      // off its country is a different case — it carries a leader line and a dot to say where
+      // it belongs, and it has landed on ground that is visibly someone else's. Letting that
+      // ink outrank the polygon made **Paris select Switzerland** and Marseille select Monaco.
+      // So a displaced name takes open water and its own land, and nothing else.
+      const poly = index[p];
+      if (poly !== 0 && iso3s[poly - 1] !== iso3s[id - 1]) continue;
+    }
+    ink[p] = id;
   }
   canvas.width = canvas.height = 1;
+
+  // The dot at the end of a leader line is the one mark that says "this country is *here*",
+  // and for a state too small to hold a pixel of its own at this resolution it is the only
+  // one. So it is a target: a few pixels, stamped last and unconditionally, which is what
+  // keeps Liechtenstein and San Marino reachable at all.
+  for (const label of labels.labels) {
+    if (!label.leader) continue;
+    const id = byIso.get(label.iso3);
+    if (id === undefined) continue;
+    const cx = Math.round(label.leader.x * k);
+    const cy = Math.round(label.leader.y * k);
+    for (let dy = -DOT_PX; dy <= DOT_PX; dy++) {
+      const y = cy + dy;
+      if (y < 0 || y >= height) continue;
+      for (let dx = -DOT_PX; dx <= DOT_PX; dx++) {
+        if (dx * dx + dy * dy > DOT_PX * DOT_PX) continue;
+        ink[y * width + ((cx + dx + width) % width)] = id;
+      }
+    }
+  }
   idMap.labelInk = ink;
 }
+
+/** Radius, in index pixels, of the clickable dot at a leader's landing point. */
+const DOT_PX = 2;
 
 /**
  * Make the printed names clickable — **only where nothing else already is**.
@@ -656,6 +697,9 @@ function stampLabelBoxes(idMap: IdMap, labels: LabelLayout): Map<string, number>
   const { width, height, index, iso3s } = idMap;
   const byIso = new Map<string, number>(iso3s.map((iso, i) => [iso, i + 1]));
   const k = width / labels.width;
+  // Collected first, written after: every box is judged against the *polygon* index, so one
+  // label's stamp cannot make the next label's fringe test lie.
+  const pending: number[] = [];
   for (const label of labels.labels) {
     let id = byIso.get(label.iso3);
     if (id === undefined) {
@@ -675,11 +719,34 @@ function stampLabelBoxes(idMap: IdMap, labels: LabelLayout): Map<string, number>
       for (let x = x0; x <= x1; x++) {
         const xx = ((x % width) + width) % width; // wrap across the antimeridian
         const p = row + xx;
-        if (index[p] === 0) index[p] = id;
+        if (index[p] !== 0) continue;
+        // …and not the anti-aliased fringe of somebody else's coastline or border either.
+        // Those pixels decode as 0 but they are not open water: `lookupId` resolves them with
+        // a 3×3 vote, and a label box that swallows them takes the vote away. That is how
+        // Marseille came to select Monaco — a coastal pixel France's polygon did not quite
+        // cover at this resolution, claimed by a box from three degrees away.
+        if (!isClearOfPolygons(index, width, height, xx, y)) continue;
+        pending.push(p, id);
       }
     }
   }
+  for (let i = 0; i < pending.length; i += 2) {
+    if (index[pending[i]] === 0) index[pending[i]] = pending[i + 1];
+  }
   return byIso;
+}
+
+/** True when neither the pixel nor any of its eight neighbours belongs to a polygon. */
+function isClearOfPolygons(index: Uint16Array, width: number, height: number, x: number, y: number): boolean {
+  for (let dy = -1; dy <= 1; dy++) {
+    const yy = y + dy;
+    if (yy < 0 || yy >= height) continue;
+    const row = yy * width;
+    for (let dx = -1; dx <= 1; dx++) {
+      if (index[row + ((x + dx + width) % width)] !== 0) return false;
+    }
+  }
+  return true;
 }
 
 /**

@@ -62,8 +62,10 @@ and `ui:theme {id}` (repaint in that theme).
   - **Size comes from the country, not from a zoom tier.** The starting rung of a nine-step ladder (96 → 21
     reference texels, ~26 → 6 screen px in the default pose) is the largest whose *set* width is within 0.75
     of the country's own width in texture space; the area tier only clamps that from both ends. Measured
-    over the 125 countries above 60 000 km² the median name fills 0.79 of its country. Small countries still
-    overflow — that is what the halo is for — but deliberately, not by default.
+    over the countries above 60 000 km² the median name fills 0.79 of its country. Small countries still
+    overflow — that is what the halo is for — but deliberately, not by default. Placement probes the
+    name's **ends** as well as its middle, because a name is not clear of its neighbours until all of it
+    is: with only a middle probe, "Spain" was accepted at a width whose first letter sat on Portugal.
   - **Zoom tiers are gone.** A name is printed at one size forever and small countries are unreadable until
     you lean in. That is how a globe behaves.
 - **A printed name is a pick target, at two resolutions.** The two layers do different jobs and the split
@@ -71,25 +73,52 @@ and `ui:theme {id}` (repaint in that theme).
   - **The box, coarse, deferential.** Each name's bounding box is stamped into the country index *only
     where a pixel is still unassigned*, so a label can take ocean but can never take a pixel from a real
     polygon. A box is a blunt instrument — letting "Russia"'s box outrank Mongolia would be far worse than
-    the problem it solves — so it never outranks anything. It adds ~2% of the index as aimable area and
-    gives countries with no polygon at this resolution (Tuvalu, Monaco…) their first clickable target.
-  - **The ink, fine, absolute.** The glyphs themselves, dilated to the halo's width, go into a separate
-    index that `lookupId` consults *first*. Clicking the letters of "Belgium" can only mean Belgium, even
-    where those letters overhang France and the pixel is France's; one pixel off the letterforms, nothing
-    has changed. That covers ~4.5% of the raster and costs a second 16 MB `Uint16Array`. Before it existed,
-    Laos, Togo, Belgium, Kuwait and Eswatini each selected a neighbour when clicked at the middle of their
-    own name. **All 228 printed names now pick their own country at their exact middle**, and a full
-    pixel-by-pixel diff against an index built with no labels at all confirms the polygons lose nothing.
+    the problem it solves — so it never outranks anything. It adds a slice of open water to the index as
+    aimable area and gives countries with no polygon at this resolution (Tuvalu, Nauru…) their first
+    clickable target.
+  - **The box takes open water, not coastline.** A stamped pixel must be unassigned *and* have no
+    assigned neighbour. Anti-aliased coast and border pixels decode as 0 but are not sea — `lookupId`
+    resolves them with its 3×3 vote — and a box that swallows them takes the vote away. That is how
+    Marseille came to select Monaco: one coastal pixel France's polygon did not quite cover.
+  - **The ink, fine, and it outranks.** The glyphs themselves, dilated to the halo's width, go into a
+    separate index that `lookupId` consults *first*. Clicking the letters of "Belgium" can only mean
+    Belgium, even where those letters overhang France and the pixel is France's; one pixel off the
+    letterforms, nothing has changed. It costs a second 16 MB `Uint16Array`. Before it existed, Laos,
+    Togo, Belgium, Kuwait and Eswatini each selected a neighbour when clicked at the middle of their own
+    name. A full pixel-by-pixel diff against an index built with no labels at all confirms the polygons
+    lose nothing to either layer.
+  - **Except a name that had to be moved.** A name standing on its own country may overhang a neighbour
+    and still win the click. A name set *clear* of its country is a different case: it carries a leader
+    line and a dot saying where it belongs, and it has landed on ground that is visibly someone else's.
+    Letting that ink outrank the polygon made **Paris select Switzerland**. So a displaced name claims
+    open water and its own land and nothing else — and the dot at the end of its leader is stamped as a
+    small target of its own, which is what keeps Liechtenstein and San Marino reachable at all. Cost of
+    the exception: the middle of 3 of 238 names (Switzerland, Liechtenstein, French Guiana) picks the
+    country underneath instead.
+  - **What that buys.** Every one of 20 capital-and-major-city test points — Paris, Lyon, Bordeaux,
+    Strasbourg, Berlin, Madrid, Lisbon, Rome, Bern, Brussels, Vienna and the rest — picks its own
+    country, and every sovereign state is reachable by pointer somewhere. Six tiny territories (Isle of
+    Man, Guernsey, Macau, Saint Martin, Saint Barthélemy, Caribbean Netherlands) are not: they hold no
+    pixel of their own at this index resolution and no room for a name.
 - **Every sovereign state gets a name, with a leader line when it will not fit.** Placement sweeps the size
   ladder up to three times at decreasing fussiness about what the name is standing on (its own country →
   open water → anywhere), and for the 195 sovereign states there is a fourth resort: set the name clear of
-  the territory and run a fine hairline back to a dot on it, exactly as a printed atlas does for Portugal,
-  Liechtenstein and The Gambia. The search is ordered *rings outside, sizes inside* — near beats large,
-  because a name two sizes down beside its country is a better map than a big one flung across Europe on a
-  hairline. 28 of 228 names are set this way; all 195 sovereign states carry one. Territories are still
-  allowed to drop, as they do on a real globe.
+  the territory and run a fine hairline back to a dot on it, exactly as a printed atlas does for The Gambia
+  and San Marino. That search is ordered *rings outside, sizes inside* — near beats large — and its radius
+  is tied to the country's own size, not a flat number.
+  **Shrinking beats moving**, though, and that is the important half. The ladder runs down to 14 reference
+  texels precisely so the narrow states of central Europe can be lettered where they belong: Switzerland's
+  landmass is 4.5° wide and its name is eleven letters, and at any larger size the layout had to relocate
+  it — six degrees west, over the middle of France. 13 of 238 names now need a leader; all 195 sovereign
+  states carry one. Territories are still allowed to drop, as they do on a real globe.
 - **Render on demand.** One rAF loop; `renderer.render` runs only when the camera moved, a flight/auto-rotate
   is active, or hover/selection changed. The loop stops while the tab is hidden.
+- **The hover test is throttled, but the last move is never dropped.** The pointer's final position is the
+  one that matters and it is exactly the one most likely to be discarded: a quick flick off the globe
+  delivers a burst of moves, the last of which lands inside the 33 ms window. The hover then stayed on a
+  country the cursor had long left — with the tooltip still showing — because `pointerleave` only covers
+  leaving the *canvas*, and the canvas is far bigger than the globe. A throttled move now schedules a
+  trailing test at the end of the window instead.
 - **Theming is a repaint, never a rebuild.** Every colour comes from `core/themes.ts`'s `GlobeTheme`; the
   globe owns none of them. A switch runs in two phases so the click feels instant: *synchronously* it
   recolours the brass/wood materials and all three lights in place, calls

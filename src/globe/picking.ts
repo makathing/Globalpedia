@@ -68,17 +68,39 @@ export function createPicking(o: PickingOptions): Picking {
     setHovered(pick(lastClientX, lastClientY));
   }
 
+  /**
+   * Throttling the hover test must not mean *dropping* the last move.
+   *
+   * The pointer's final position is the one that matters, and it is exactly the one most
+   * likely to be thrown away: a quick flick off the globe delivers a burst of moves, the last
+   * of which lands inside the throttle window and is discarded. The hover then stays on
+   * whatever the pointer was over two frames ago — a country left washed with the cursor
+   * nowhere near it — until something else happens to redraw. `pointerleave` only covers
+   * leaving the canvas, and the canvas is much bigger than the globe.
+   *
+   * So a throttled move schedules a trailing test at the end of the window instead.
+   */
+  let trailing = 0;
+  function testNow(): void {
+    trailing = 0;
+    lastMoveAt = performance.now();
+    setHovered(pick(lastClientX, lastClientY));
+  }
   const onMove = (e: PointerEvent): void => {
     pointerInside = true;
     lastClientX = e.clientX;
     lastClientY = e.clientY;
-    const now = performance.now();
-    if (now - lastMoveAt < HOVER_INTERVAL_MS) return;
-    lastMoveAt = now;
-    setHovered(pick(e.clientX, e.clientY));
+    const wait = HOVER_INTERVAL_MS - (performance.now() - lastMoveAt);
+    if (wait > 0) {
+      if (!trailing) trailing = window.setTimeout(testNow, wait);
+      return;
+    }
+    testNow();
   };
   const onLeave = (): void => {
     pointerInside = false;
+    clearTimeout(trailing);
+    trailing = 0;
     setHovered(null);
   };
 
@@ -113,6 +135,7 @@ export function createPicking(o: PickingOptions): Picking {
     },
     refresh,
     dispose() {
+      clearTimeout(trailing);
       o.dom.removeEventListener('pointermove', onMove);
       o.dom.removeEventListener('pointerleave', onLeave);
       o.dom.removeEventListener('pointerdown', onDown);

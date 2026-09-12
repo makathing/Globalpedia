@@ -50,8 +50,13 @@ export function labelFont(px: number): string {
  */
 const TARGET_FILL = 0.75;
 
-/** How many rungs below the area tier the extent rule may push a name. */
-const EXTENT_FLOOR_STEPS = 3;
+/**
+ * How many rungs below the area tier the extent rule may push a name. Generous: a country that
+ * is narrow for its area — Switzerland, Slovenia, The Gambia, Chile — needs to go a long way
+ * down the ladder before its name fits, and the alternative is not a bigger name, it is a name
+ * somewhere else.
+ */
+const EXTENT_FLOOR_STEPS = 5;
 
 /**
  * Glyph height in reference (8192-wide) texels, largest first.
@@ -59,15 +64,21 @@ const EXTENT_FLOOR_STEPS = 3;
  * Calibration: at 8192 across, with the globe about 700 px on screen, roughly 3.7 texels
  * land on one screen pixel at the centre of the disc — so divide by 3.7 for the em size a
  * viewer actually sees in the default pose. 96 → 26 px, 80 → 22 px, 66 → 18 px, 54 → 15 px,
- * 44 → 12 px, 36 → 10 px, 30 → 8 px, 25 → 7 px, 21 → 6 px. The bottom rungs are deliberately
- * below comfortable reading size: they are the "lean in" tier, and they keep crowded regions
- * looking like dense printed type rather than a map with holes in it. There is no zoom tier —
- * a name is printed at one size forever, and the viewer moves closer.
+ * 44 → 12 px, 36 → 10 px, 30 → 8 px, 25 → 7 px, 21 → 6 px, 17 → 4.6 px, 14 → 3.8 px. The bottom
+ * rungs are deliberately below comfortable reading size: they are the "lean in" tier, and they
+ * keep crowded regions looking like dense printed type rather than a map with holes in it.
+ * There is no zoom tier — a name is printed at one size forever, and the viewer moves closer.
+ *
+ * The last two rungs exist for the narrow states of central Europe. Switzerland's landmass is
+ * 4.5° wide and its name is eleven letters; at any larger size the name cannot be printed on
+ * the country at all, and the layout used to relocate it — six degrees west, over the middle
+ * of France, where it took Paris's own pick target with it. An atlas would have set it small
+ * and in place, and so does this now.
  *
  * Which rung a name *starts* on comes from `startTierFor` — its country's actual width — not
  * from its area; collisions then step it further down.
  */
-export const FONT_LADDER: readonly number[] = [96, 80, 66, 54, 44, 36, 30, 25, 21];
+export const FONT_LADDER: readonly number[] = [96, 80, 66, 54, 44, 36, 30, 25, 21, 17, 14];
 
 /**
  * Area (km²) at or above which a country may start on ladder rung i. Area is the *clamp*
@@ -136,11 +147,20 @@ function sitsOnOwnGround(
   return true;
 }
 
-/** [fraction of the box width, degrees of latitude] offsets probed by the strict pass. */
+/**
+ * [fraction of the box width, degrees of latitude] offsets probed by the strict pass.
+ *
+ * The ±0.42 pair is the name's **ends**, and it is load-bearing. With only the middle and the
+ * thirds, "Spain" was accepted at a width whose first letter sat squarely on Portugal — and
+ * since ink outranks polygons when picking, that made a strip of Portugal select Spain. A name
+ * has to clear its neighbours along its whole length, not just in the middle.
+ */
 const STRICT_PROBES: readonly [number, number][] = [
   [0, 0],
   [-0.3, 0],
   [0.3, 0],
+  [-0.42, 0],
+  [0.42, 0],
   [0, -0.2],
   [0, 0.2],
 ];
@@ -193,9 +213,23 @@ const LEADER_DIRS: readonly [number, number][] = Array.from({ length: 16 }, (_, 
  * had it set at the bottom rung, six screen pixels, for a country people come looking for.
  */
 const LEADER_STEP_DOWN = 1;
-/** However far the rings reach, a leader never crosses more of the globe than this. */
-const MAX_LEADER_LAT_DEG = 14;
-const MAX_LEADER_LNG_DEG = 20;
+/**
+ * However far the rings reach, a leader never crosses more of the globe than this.
+ *
+ * A ceiling, not the budget. The budget is the country's own reach times `LEADER_REACH_K`,
+ * floored at `MIN_LEADER_DEG` so a micro-state can still get clear of itself.
+ *
+ * Scaling by the country matters far more than the ceiling does. Because ink outranks polygons
+ * when picking, a displaced name takes a bite out of whatever it lands on — and a flat radius
+ * let "Switzerland" settle over the empty middle of France, six degrees from Bern, which made
+ * **Paris select Switzerland**. Tied to the country's own size, a displaced name can only ever
+ * reach a country that adjoins its own, which is exactly where an atlas sets it. A state that
+ * cannot find room even there is dropped, which is what a printed globe does with it anyway.
+ */
+const LEADER_REACH_K = 3;
+const MIN_LEADER_DEG = 5;
+const MAX_LEADER_LAT_DEG = 5;
+const MAX_LEADER_LNG_DEG = 6;
 
 /** 1/cos(lat) past ~70.5° is more stretch than the glyphs survive; hold it here. */
 const MAX_SCALE_X = 3;
@@ -484,24 +518,31 @@ export function layoutLabels(
      * would be worse than nothing.
      */
     const leaderSweep = (): PlacedLabel | null => {
-      const maxLeadX = (MAX_LEADER_LNG_DEG / 360) * W;
-      const maxLeadY = (MAX_LEADER_LAT_DEG / 180) * H;
+      const maxLeadX =
+        (clamp(reach * anchorScaleX * LEADER_REACH_K, MIN_LEADER_DEG, MAX_LEADER_LNG_DEG) / 360) * W;
+      const maxLeadY = (clamp(reach * LEADER_REACH_K, MIN_LEADER_DEG, MAX_LEADER_LAT_DEG) / 180) * H;
       const reachY = (reach / 180) * H;
       const first = Math.min(areaTier + LEADER_STEP_DOWN, FONT_LADDER.length - 1);
       // Rings outside, sizes inside: near beats large. Exhausting every ring at the biggest
       // rung before trying a smaller one flung "Liechtenstein" and "Bosnia and Herzegovina"
       // across half of Europe on a hairline; a name set two sizes down but beside its country
       // is the better map, and the one an atlas would set.
-      for (const r of LEADER_RINGS) {
-        for (let tier = first; tier < FONT_LADDER.length; tier++) {
-          const fontPx = FONT_LADDER[tier];
-          const boxH = fontPx * (0.98 + 2 * PAD_Y);
-          const flatW = (unitW + 2 * PAD_X) * fontPx;
-          // The step is the country's own reach plus a modest share of the name, not the whole
-          // name: the leader exists precisely so the name need not clear its territory.
-          const baseX = flatW * anchorScaleX * 0.35 + reachY * anchorScaleX;
-          const baseY = boxH * 0.8 + reachY;
-          for (const strict of [true, false]) {
+      //
+      // But open water outranks both. The whole ring-and-size search runs once refusing to
+      // stand on a neighbour and only then, if nothing was found anywhere, again without that
+      // refusal: a displaced name that lands on France takes a bite out of France's own pick
+      // area, because ink outranks polygons. Switzerland, Luxembourg and San Marino between
+      // them were eating a third of France.
+      for (const strict of [true, false]) {
+        for (const r of LEADER_RINGS) {
+          for (let tier = first; tier < FONT_LADDER.length; tier++) {
+            const fontPx = FONT_LADDER[tier];
+            const boxH = fontPx * (0.98 + 2 * PAD_Y);
+            const flatW = (unitW + 2 * PAD_X) * fontPx;
+            // The step is the country's own reach plus a modest share of the name, not the
+            // whole name: the leader exists so the name need not clear its territory.
+            const baseX = flatW * anchorScaleX * 0.35 + reachY * anchorScaleX;
+            const baseY = boxH * 0.8 + reachY;
             for (const [ux, uy] of LEADER_DIRS) {
               const cx = anchorX + clamp(ux * r * baseX, -maxLeadX, maxLeadX);
               const cy = clamp(anchorY + clamp(uy * r * baseY, -maxLeadY, maxLeadY), boxH / 2, H - boxH / 2);
