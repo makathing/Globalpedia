@@ -32,7 +32,7 @@ and `ui:theme {id}` (repaint in that theme).
 | `surface.ts` | The printed surface: paper/ink/halftone tiles, age, gore seams, and the sphere's bump + roughness + clearcoat |
 | `globe.ts` | renderer, camera, lights, sphere, brass semi-meridian + finials + curved stem + wooden base |
 | `controls.ts` | OrbitControls wrapper: zoom-scaled rotate speed, auto-rotate that yields to input/selection |
-| `label-layout.ts` | where each country name is printed: position, size from the country's own width, `1/cos(lat)` pre-stretch, collisions |
+| `label-layout.ts` | where each country name is printed: position, size from the country's own width, `1/cos(lat)` pre-stretch, collisions, leader lines |
 | `highlight.ts` | 2048×1024 transparent canvas on a 1.002-radius sphere: the wash, plus an underline beneath the printed name |
 | `picking.ts` | pointer → sphere UV → pick index; click = < 5 px & < 300 ms |
 | `math.ts` | lat/lng ↔ sphere, projection, easing |
@@ -47,6 +47,8 @@ and `ui:theme {id}` (repaint in that theme).
 - **Picking is pixel-exact, not geometric.** A 4096×2048 index (`Uint16Array`, 16 MB) is decoded from a
   flat-colour canvas; the blue channel is a checksum so anti-aliased border blends fail the lookup and fall
   back to a 3×3 neighbourhood vote instead of decoding as a wrong country. Stand meshes are never raycast.
+  A second index of the same shape (`IdMap.labelInk`) holds the printed names' **glyphs**, and `lookupId`
+  reads it first — see below.
 - **The names are printed on the paper, not floated in front of it.** They are rasterised into the map
   texture (`label-layout.ts` decides where, `texture.ts` draws them), so they curve over the surface, turn
   with it, go upside down when you spin past them, foreshorten into the limb, and never move relative to
@@ -60,17 +62,32 @@ and `ui:theme {id}` (repaint in that theme).
   - **Size comes from the country, not from a zoom tier.** The starting rung of a nine-step ladder (96 → 21
     reference texels, ~26 → 6 screen px in the default pose) is the largest whose *set* width is within 0.75
     of the country's own width in texture space; the area tier only clamps that from both ends. Measured
-    over the 123 countries above 60 000 km² the median name fills 0.79 of its country. Small countries still
+    over the 125 countries above 60 000 km² the median name fills 0.79 of its country. Small countries still
     overflow — that is what the halo is for — but deliberately, not by default.
   - **Zoom tiers are gone.** A name is printed at one size forever and small countries are unreadable until
     you lean in. That is how a globe behaves.
-- **A printed name is still a pick target.** Each placed name's box is stamped into the ID map **only where
-  a pixel is still unassigned**, so a label can take ocean but can never steal a pixel from a real polygon.
-  That adds ~2% of the index as new, aimable area and finally gives countries with no polygon at this
-  resolution (Tuvalu, Monaco…) something to click. It also means a name shoved onto a neighbour would not be
-  clickable there, which is why the layout consults the finished pick index and prefers, in order, a slot
-  standing on its own country, then one over open water, then anywhere — going a size or two smaller before
-  it accepts a worse position. 203 of 208 printed names pick their own country at their exact middle.
+- **A printed name is a pick target, at two resolutions.** The two layers do different jobs and the split
+  is the whole trick:
+  - **The box, coarse, deferential.** Each name's bounding box is stamped into the country index *only
+    where a pixel is still unassigned*, so a label can take ocean but can never take a pixel from a real
+    polygon. A box is a blunt instrument — letting "Russia"'s box outrank Mongolia would be far worse than
+    the problem it solves — so it never outranks anything. It adds ~2% of the index as aimable area and
+    gives countries with no polygon at this resolution (Tuvalu, Monaco…) their first clickable target.
+  - **The ink, fine, absolute.** The glyphs themselves, dilated to the halo's width, go into a separate
+    index that `lookupId` consults *first*. Clicking the letters of "Belgium" can only mean Belgium, even
+    where those letters overhang France and the pixel is France's; one pixel off the letterforms, nothing
+    has changed. That covers ~4.5% of the raster and costs a second 16 MB `Uint16Array`. Before it existed,
+    Laos, Togo, Belgium, Kuwait and Eswatini each selected a neighbour when clicked at the middle of their
+    own name. **All 228 printed names now pick their own country at their exact middle**, and a full
+    pixel-by-pixel diff against an index built with no labels at all confirms the polygons lose nothing.
+- **Every sovereign state gets a name, with a leader line when it will not fit.** Placement sweeps the size
+  ladder up to three times at decreasing fussiness about what the name is standing on (its own country →
+  open water → anywhere), and for the 195 sovereign states there is a fourth resort: set the name clear of
+  the territory and run a fine hairline back to a dot on it, exactly as a printed atlas does for Portugal,
+  Liechtenstein and The Gambia. The search is ordered *rings outside, sizes inside* — near beats large,
+  because a name two sizes down beside its country is a better map than a big one flung across Europe on a
+  hairline. 28 of 228 names are set this way; all 195 sovereign states carry one. Territories are still
+  allowed to drop, as they do on a real globe.
 - **Render on demand.** One rAF loop; `renderer.render` runs only when the camera moved, a flight/auto-rotate
   is active, or hover/selection changed. The loop stops while the tab is hidden.
 - **Theming is a repaint, never a rebuild.** Every colour comes from `core/themes.ts`'s `GlobeTheme`; the

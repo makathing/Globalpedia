@@ -43,7 +43,7 @@ export function labelFont(px: number): string {
  * How much of its country's width a name should fill, when the country is big enough to
  * choose. Under about 0.7 the name looks timid on the landmass; over about 0.85 it starts
  * crowding the borders, and past 1 it is the single thing that makes a globe read as software
- * rather than as print. Measured over the 123 countries above 60 000 km², this target lands
+ * rather than as print. Measured over the 125 countries above 60 000 km², this target lands
  * the median at 0.79 of the country's own width. Small countries cannot reach it and overflow
  * deliberately — that is what the halo is for — but overflow is then the exception rather
  * than, as it was when the size came from the area tier alone, the rule.
@@ -172,6 +172,31 @@ const NUDGES: readonly [number, number][] = [
   ...NUDGE_MAGNITUDES.flatMap((m) => NUDGE_DIRS.map(([x, y]): [number, number] => [x * m, y * m])),
 ];
 
+/**
+ * When a sovereign state's name will not fit anywhere on or beside its territory, it is set
+ * clear of the country and joined to it by a leader line — the device every printed atlas uses
+ * for Portugal, Lebanon, Togo and the rest of the crowded coastlines. These are the rings it
+ * is offered, as multiples of "half the name plus the country's own reach", nearest first, and
+ * sixteen directions per ring. Each ring is swept twice — open water or its own ground first,
+ * then anywhere — so a short leader onto a neighbour beats a long one out to sea. The leader
+ * line and the ink index between them leave no doubt which country the name belongs to.
+ */
+const LEADER_RINGS: readonly number[] = [0.7, 1, 1.4, 1.9, 2.5, 3.2, 4.2, 5.2, 6.4, 8];
+const LEADER_DIRS: readonly [number, number][] = Array.from({ length: 16 }, (_, i) => {
+  const a = Math.PI + (i * Math.PI) / 8; // start due west, step 22.5°
+  return [Math.cos(a), Math.sin(a)] as [number, number];
+});
+/**
+ * A displaced name is set one rung smaller than its area alone would allow — but from the
+ * *area* tier, not from the extent tier. "Fill 0.75 of the country's width" is meaningless for
+ * a name that is not standing on the country; sizing a displaced Portugal off Portugal's width
+ * had it set at the bottom rung, six screen pixels, for a country people come looking for.
+ */
+const LEADER_STEP_DOWN = 1;
+/** However far the rings reach, a leader never crosses more of the globe than this. */
+const MAX_LEADER_LAT_DEG = 14;
+const MAX_LEADER_LNG_DEG = 20;
+
 /** 1/cos(lat) past ~70.5° is more stretch than the glyphs survive; hold it here. */
 const MAX_SCALE_X = 3;
 /** No name is printed beyond this latitude; the anchor is clamped into the band. */
@@ -218,6 +243,11 @@ export interface PlacedLabel {
   haloShift: number;
   /** Rung of `FONT_LADDER` actually used. */
   tier: number;
+  /**
+   * Present only when the name had to be set clear of its territory: the point on the
+   * territory, in reference pixels, that a leader line should run back to.
+   */
+  leader?: { x: number; y: number };
 }
 
 export interface LabelLayout {
@@ -330,7 +360,9 @@ export interface LayoutOptions {
  * that is free: starting rung from `startTierFor`, then up to `MAX_STEP_DOWN` rungs smaller,
  * and at each rung the anchor followed by twenty-four small offsets, nearest first. The whole
  * ladder is swept up to three times at decreasing fussiness about what the name is standing
- * on (see `sweep`). A name that never finds a free slot is dropped and listed in `skipped`.
+ * on (see `sweep`). A sovereign state that still has nowhere to go gets one more chance from
+ * `leaderSweep`: set clear of its territory, with a leader line back to it. A name that finds
+ * no free slot at all is dropped and listed in `skipped`.
  *
  * No randomness that is not seeded from the ISO3, no dependence on iteration order of the
  * input object beyond the explicit sort: the same data always yields the same map.
@@ -441,7 +473,67 @@ export function layoutLabels(
       return null;
     };
 
-    const placed = (countryAt ? (sweep(0) ?? sweep(1)) : null) ?? sweep(2);
+    /**
+     * Last resort, and only for sovereign states: set the name clear of the country and run a
+     * leader back to it. Rather this than no name at all — Portugal is a country people hunt
+     * for, and "there was no room" is not an answer a globe is allowed to give. Territories
+     * are left to drop, exactly as a real globe drops them.
+     *
+     * The displaced slot must still stand on its own country or on open water, never on a
+     * neighbour: a name sitting in the middle of Spain with a hairline pointing at Portugal
+     * would be worse than nothing.
+     */
+    const leaderSweep = (): PlacedLabel | null => {
+      const maxLeadX = (MAX_LEADER_LNG_DEG / 360) * W;
+      const maxLeadY = (MAX_LEADER_LAT_DEG / 180) * H;
+      const reachY = (reach / 180) * H;
+      const first = Math.min(areaTier + LEADER_STEP_DOWN, FONT_LADDER.length - 1);
+      // Rings outside, sizes inside: near beats large. Exhausting every ring at the biggest
+      // rung before trying a smaller one flung "Liechtenstein" and "Bosnia and Herzegovina"
+      // across half of Europe on a hairline; a name set two sizes down but beside its country
+      // is the better map, and the one an atlas would set.
+      for (const r of LEADER_RINGS) {
+        for (let tier = first; tier < FONT_LADDER.length; tier++) {
+          const fontPx = FONT_LADDER[tier];
+          const boxH = fontPx * (0.98 + 2 * PAD_Y);
+          const flatW = (unitW + 2 * PAD_X) * fontPx;
+          // The step is the country's own reach plus a modest share of the name, not the whole
+          // name: the leader exists precisely so the name need not clear its territory.
+          const baseX = flatW * anchorScaleX * 0.35 + reachY * anchorScaleX;
+          const baseY = boxH * 0.8 + reachY;
+          for (const strict of [true, false]) {
+            for (const [ux, uy] of LEADER_DIRS) {
+              const cx = anchorX + clamp(ux * r * baseX, -maxLeadX, maxLeadX);
+              const cy = clamp(anchorY + clamp(uy * r * baseY, -maxLeadY, maxLeadY), boxH / 2, H - boxH / 2);
+              const cLat = 90 - (cy / H) * 180;
+              const scaleX = stretchAt(cLat);
+              const boxW = unitW * fontPx * scaleX + 2 * PAD_X * fontPx;
+              if (strict && countryAt && !sitsOnOwnGround(countryAt, iso3, cx, cLat, boxW, W, false)) continue;
+              const box: Box = { x0: cx - boxW / 2, x1: cx + boxW / 2, y0: cy - boxH / 2, y1: cy + boxH / 2 };
+              let clear = true;
+              for (const other of boxes) {
+                if (overlaps(box, other, W)) {
+                  clear = false;
+                  break;
+                }
+              }
+              if (!clear) continue;
+              boxes.push(box);
+              return {
+                iso3, name: rec.name, x: cx, y: cy, fontPx, scaleX, boxW, boxH, flatW,
+                tilt, haloShift: haloShiftK * fontPx, tier,
+                leader: { x: anchorX, y: anchorY },
+              };
+            }
+          }
+        }
+      }
+      return null;
+    };
+
+    const placed =
+      ((countryAt ? (sweep(0) ?? sweep(1)) : null) ?? sweep(2)) ??
+      (rec.independent ? leaderSweep() : null);
 
     if (placed) {
       labels.push(placed);

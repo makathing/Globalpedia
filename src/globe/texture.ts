@@ -9,7 +9,7 @@ import { feature, mesh, neighbors } from 'topojson-client';
 import type { GeometryCollection, GeometryObject, Objects, Topology } from 'topojson-specification';
 import type { CountryRecord } from '../core/types';
 import { DEFAULT_THEME, themeById, type GlobeTheme } from '../core/themes';
-import { labelFont, layoutLabels, type LabelLayout } from './label-layout';
+import { labelFont, layoutLabels, type LabelLayout, type PlacedLabel } from './label-layout';
 import { projectX, projectY } from './math';
 import { CAP_DEGREES, compositeSurface, drawAging, drawGoreSeams, drawPolarCaps } from './surface';
 
@@ -36,6 +36,20 @@ export interface IdMap {
   height: number;
   index: Uint16Array;
   iso3s: string[];
+  /**
+   * Where the printed names' **ink** is, in the same encoding and the same raster as `index`.
+   *
+   * `index` carries a name's whole bounding box, and only where a pixel was still unassigned —
+   * coarse on purpose, because a box that outranked polygons would let "Russia" swallow
+   * Mongolia. But that coarseness meant clicking the middle of "Belgium", which overhangs
+   * France, selected France: the letters are there, the box could not claim the pixel, so the
+   * polygon under them won.
+   *
+   * This layer is the fine one. It holds the glyphs themselves, dilated to the halo's width —
+   * i.e. exactly the footprint a viewer reads as "the name" — and `lookupId` consults it
+   * first. Where there is ink the ink wins; one pixel outside it, nothing has changed.
+   */
+  labelInk: Uint16Array;
 }
 
 export interface GlobeTextures {
@@ -312,6 +326,61 @@ interface PaintPaths {
  * of a screen pixel wide, so the spread is bought instead with a seeded sub-pixel offset on
  * the halo, which costs nothing. Total: ~133 ms at 8k, ~35 ms at 4k.
  */
+/**
+ * The hairline from a displaced name back to its territory, with a small dot where it lands.
+ *
+ * Drawn in the *unstretched* frame: it is a geometric line between two points of the raster,
+ * not type, so it must not carry the glyphs' `1/cos(lat)` pre-stretch — the sphere foreshortens
+ * it correctly on its own. Kept under a pixel wide at 8k and stopped short of the name's box,
+ * so it reads as an engraved rule rather than as a pointer drawn by a user interface.
+ */
+function drawLeader(
+  ctx: CanvasRenderingContext2D,
+  label: PlacedLabel,
+  xs: readonly number[],
+  k: number,
+  width: number,
+  theme: GlobeTheme,
+): void {
+  const leader = label.leader;
+  if (!leader) return;
+  const ty = leader.y * k;
+  const fontPx = label.fontPx * k;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 0.8;
+  ctx.strokeStyle = theme.labelInk;
+  ctx.fillStyle = theme.labelInk;
+  ctx.lineWidth = Math.max(0.9, fontPx * 0.075);
+  ctx.lineCap = 'round';
+  for (const x of xs) {
+    // Nearest copy of the territory across the seam.
+    let tx = leader.x * k;
+    if (tx - x > width / 2) tx -= width;
+    else if (x - tx > width / 2) tx += width;
+    const cy = label.y * k;
+    const dx = tx - x;
+    const dy = ty - cy;
+    // Nothing to point at when the territory is already under the name.
+    if (Math.abs(dx) < (label.boxW * k) / 2 && Math.abs(dy) < (label.boxH * k) / 2) continue;
+    // Leave the name's box at its edge, not its centre: the fraction of the run that clears
+    // the box horizontally or vertically, whichever happens first.
+    const startT = Math.min(
+      Math.abs(dx) > 1e-3 ? ((label.boxW * k) / 2 + fontPx * 0.2) / Math.abs(dx) : Infinity,
+      Math.abs(dy) > 1e-3 ? ((label.boxH * k) / 2 + fontPx * 0.2) / Math.abs(dy) : Infinity,
+      0.9,
+    );
+    ctx.beginPath();
+    ctx.moveTo(x + dx * startT, cy + dy * startT);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(tx, ty, Math.max(1.1, fontPx * 0.1), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawLabels(
   ctx: CanvasRenderingContext2D,
   layout: LabelLayout,
@@ -339,6 +408,10 @@ function drawLabels(
         : label.x * k + half > width
           ? [label.x * k, label.x * k - width]
           : [label.x * k];
+
+    // Leader first, so the name's halo closes over the end of it rather than the line
+    // crossing the letterforms.
+    if (label.leader) drawLeader(ctx, label, xs, k, width, theme);
 
     for (const x of xs) {
       ctx.setTransform(label.scaleX, 0, 0, 1, x, label.y * k);
@@ -501,7 +574,69 @@ function buildIdMap(shapesByIndex: (CountryShape | null)[], width: number): IdMa
     if (idx !== undefined) index[p] = idx;
   }
   canvas.width = canvas.height = 1; // release the backing store eagerly
-  return { width, height, index, iso3s };
+  return { width, height, index, iso3s, labelInk: new Uint16Array(0) };
+}
+
+/**
+ * Rasterise the names' ink into `idMap.labelInk`, in the same encoding as the country index.
+ *
+ * The glyphs are both filled and stroked at the halo's own line width, so the region claimed
+ * is the glyph plus its halo — the shape the eye reads as the name, counters and inter-letter
+ * gaps closed — and not a pixel more. At 4096 across, the smallest rung (21 reference texels)
+ * lands as a 10-pixel glyph with a 3-pixel dilation, which is enough for a pointer.
+ *
+ * Exact-match decoding, like the country index: an anti-aliased edge pixel blends two encodings
+ * and decodes as nothing, so the boundary of a name falls through to the country beneath rather
+ * than to some unrelated third country.
+ */
+function buildLabelInkIndex(idMap: IdMap, labels: LabelLayout, byIso: Map<string, number>): void {
+  const { width, height } = idMap;
+  const [canvas, ctx] = makeCanvas(width, height);
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, width, height);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  const k = width / labels.width;
+  const lookup = new Map<number, number>();
+  for (const label of labels.labels) {
+    const id = byIso.get(label.iso3);
+    if (id === undefined) continue;
+    const [r, g, b] = encodeId(id);
+    lookup.set((r << 16) | (g << 8) | b, id);
+    const css = `rgb(${r},${g},${b})`;
+    const fontPx = label.fontPx * k;
+    if (fontPx < 2) continue;
+    ctx.fillStyle = css;
+    ctx.strokeStyle = css;
+    ctx.lineWidth = fontPx * 0.34; // the halo's 0.15 em, doubled because a stroke straddles
+    ctx.font = labelFont(fontPx);
+    // Same wrap as the paint: a name straddling the antimeridian is inked on both edges.
+    const half = (label.boxW * k) / 2;
+    const x0 = label.x * k;
+    const xs = x0 - half < 0 ? [x0, x0 + width] : x0 + half > width ? [x0, x0 - width] : [x0];
+    for (const x of xs) {
+      ctx.setTransform(label.scaleX, 0, 0, 1, x, label.y * k);
+      ctx.rotate(label.tilt);
+      ctx.strokeText(label.name, 0, 0);
+      ctx.fillText(label.name, 0, 0);
+    }
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const ink = new Uint16Array(width * height);
+  for (let p = 0, i = 0; p < ink.length; p++, i += 4) {
+    const packed = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+    if (packed === 0) continue;
+    const id = lookup.get(packed);
+    if (id !== undefined) ink[p] = id;
+  }
+  canvas.width = canvas.height = 1;
+  idMap.labelInk = ink;
 }
 
 /**
@@ -517,7 +652,7 @@ function buildIdMap(shapesByIndex: (CountryShape | null)[], width: number): IdMa
  * The boxes are stamped in print order, which is descending area, so where two boxes were
  * allowed to touch the larger country wins — the same rule the layout itself used.
  */
-function stampLabelBoxes(idMap: IdMap, labels: LabelLayout): void {
+function stampLabelBoxes(idMap: IdMap, labels: LabelLayout): Map<string, number> {
   const { width, height, index, iso3s } = idMap;
   const byIso = new Map<string, number>(iso3s.map((iso, i) => [iso, i + 1]));
   const k = width / labels.width;
@@ -544,16 +679,28 @@ function stampLabelBoxes(idMap: IdMap, labels: LabelLayout): void {
       }
     }
   }
+  return byIso;
 }
 
 /**
- * Look up the ISO3 under a UV. Anti-aliased border pixels have no exact
- * encoding (index 0), so fall back to a 3×3 neighbourhood vote.
+ * Look up the ISO3 under a UV.
+ *
+ * Ink first: if the pointer is on the glyphs of a printed name, that name's country wins
+ * outright. Clicking the letters of "Belgium" can only mean Belgium, even though those letters
+ * overhang France and the pixel belongs to France in the country index. Everywhere else — one
+ * pixel off the letterforms — the country index answers exactly as it did before.
+ *
+ * Then the country index, where anti-aliased border pixels have no exact encoding (index 0),
+ * so fall back to a 3×3 neighbourhood vote.
  */
 export function lookupId(idMap: IdMap, u: number, v: number): string | null {
-  const { width, height, index, iso3s } = idMap;
+  const { width, height, index, iso3s, labelInk } = idMap;
   const x = Math.min(width - 1, Math.max(0, Math.floor(u * width)));
   const y = Math.min(height - 1, Math.max(0, Math.floor((1 - v) * height)));
+  if (labelInk.length) {
+    const ink = labelInk[y * width + x];
+    if (ink) return iso3s[ink - 1];
+  }
   const direct = index[y * width + x];
   if (direct) return iso3s[direct - 1];
   const votes = new Map<number, number>();
@@ -630,7 +777,7 @@ export function buildGlobeTextures(
     countryAt: (lat, lng) => lookupId(idMap, (lng + 180) / 360, (lat + 90) / 180),
     lngSpanOf: (iso3) => spans.get(iso3) ?? null,
   });
-  stampLabelBoxes(idMap, labels);
+  buildLabelInkIndex(idMap, labels, stampLabelBoxes(idMap, labels));
 
   const width = options.mapWidth;
   const [map, mapCtx] = makeCanvas(width, width / 2);
