@@ -87,12 +87,17 @@ const LIFE_RADIUS = 1.0035;
 const BASE_SCALE = 0.0052;
 
 /**
- * The discovery ramp, in camera distance from the orbit target. `DEFAULT_DISTANCE` is 3.9 and
- * `MIN_DISTANCE` is 1.6, so the default pose sits hard at zero and the world only populates
- * once the viewer has deliberately leaned in past about three radii.
+ * The discovery ramp, in camera distance from the view target. `DEFAULT_DISTANCE` is 3.9 and
+ * `MIN_DISTANCE` is 1.6, so the default pose still sits hard at zero: the globe is lifeless
+ * until the viewer leans in, which is the point.
+ *
+ * But the ramp used to start at 3.15 and only fill in at 2.15 — two thirds of the way to the
+ * closest the controls allow — and with creatures this sparse the first person to look simply
+ * could not find them. The ramp now opens almost as soon as the viewer starts zooming, so the
+ * reward arrives while they are still moving towards it rather than after they have given up.
  */
-const FADE_FAR = 3.15;
-const FADE_NEAR = 2.15;
+const FADE_FAR = 3.72;
+const FADE_NEAR = 2.55;
 /** Below this the layer is switched off entirely and the simulation stops. */
 const ALPHA_EPSILON = 0.004;
 
@@ -811,7 +816,9 @@ interface Creature {
 
 export function createLife(idMap: IdMap, theme: GlobeTheme, opts: LifeOptions = {}): LifeHandle {
   const rnd = mulberry32((opts.seed ?? 0x5eed1235) >>> 0);
-  const target = Math.max(24, opts.count ?? 440);
+  // 440 spread over a sphere left most close-ups empty; the globe has to feel inhabited
+  // at the moment someone leans in, not merely be inhabited on average.
+  const target = Math.max(24, opts.count ?? 950);
 
   const reducedMotion =
     typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
