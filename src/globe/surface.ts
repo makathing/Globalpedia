@@ -378,6 +378,16 @@ function surfaceTile(surface: SurfaceTheme, grain: number): HTMLCanvasElement {
  * The whole printed surface in a single full-raster 'overlay' pass: ink density variation
  * across fills, ocean and line-work alike, the fibre of the paper, and the offset rosette.
  */
+/**
+ * How far from each pole the surface tooth is held down. Fine high-frequency detail in u is
+ * exactly what the mip/anisotropy fallback undersamples into azimuthal noise — the pole
+ * starburst — and the strongest such detail on the globe is this pass's own paper tooth.
+ * Washing over it afterwards only removes contrast in proportion to the wash; not painting it
+ * in the first place removes it outright, which is what actually clears the rays.
+ */
+const POLE_SOFTEN_DEGREES = 20;
+const POLE_SOFTEN_ALPHA = 0.34;
+
 export function compositeSurface(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -387,11 +397,26 @@ export function compositeSurface(
 ): void {
   const pattern = ctx.createPattern(surfaceTile(surface, grain), 'repeat');
   if (!pattern) return;
+  const band = Math.min(height / 2, (POLE_SOFTEN_DEGREES / 180) * height);
+
   ctx.save();
   ctx.globalCompositeOperation = 'overlay';
-  ctx.globalAlpha = 1;
   ctx.fillStyle = pattern;
+
+  // Everything away from the poles, at full strength.
+  ctx.globalAlpha = 1;
+  ctx.fillRect(0, band, width, height - 2 * band);
+
+  // Both polar bands in ONE clipped fill. Splitting them into a latitude ramp of slabs was the
+  // obvious way to do this and cost 495 ms at 8k: a pattern fill carries ~21 ms of fixed setup
+  // regardless of area, so the number of pattern fills is the thing to minimise, not the pixels.
+  ctx.beginPath();
+  ctx.rect(0, 0, width, band);
+  ctx.rect(0, height - band, width, band);
+  ctx.clip();
+  ctx.globalAlpha = POLE_SOFTEN_ALPHA;
   ctx.fillRect(0, 0, width, height);
+
   ctx.restore();
 }
 
@@ -592,7 +617,7 @@ export const CAP_DEGREES = 5.5;
  * geography. It also happens to be true of the object — the gores bunch and grey off toward the
  * poles, which is the same thing `aging` already does there.
  */
-const CAP_HAZE_DEGREES = 20;
+const CAP_HAZE_DEGREES = 21;
 /** Below this, a theme's gores are too plain to have a decorated cap — rings only. */
 const CAP_DECOR_GORES = 0.25;
 
@@ -696,8 +721,8 @@ export function drawPolarCaps(
       Math.round((local[2] + capRgb[2]) / 2),
     ];
     const haze = ctx.createLinearGradient(0, capH, 0, hazeH);
-    haze.addColorStop(0, rgba(tint, 0.78));
-    haze.addColorStop(0.45, rgba(tint, 0.34));
+    haze.addColorStop(0, rgba(tint, 0.72));
+    haze.addColorStop(0.45, rgba(tint, 0.26));
     haze.addColorStop(1, rgba(tint, 0));
     ctx.globalAlpha = 1;
     ctx.fillStyle = haze;
