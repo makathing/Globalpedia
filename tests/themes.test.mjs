@@ -32,5 +32,5 @@ test('themes.ts guards (TypeScript, via --experimental-strip-types)', { skip: ma
   }
   assert.equal(result.status, 0, 'child test process exited non-zero');
   assert.equal(failed, 0, `${failed} theme test(s) failed`);
-  assert.ok(passed >= 8, `expected at least 8 passing theme tests, got ${passed}`);
+  assert.ok(passed >= 10, `expected at least 10 passing theme tests, got ${passed}`);
 });

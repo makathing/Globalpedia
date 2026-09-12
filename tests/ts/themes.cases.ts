@@ -133,6 +133,38 @@ test('every theme carries the tokens the page needs', () => {
   }
 });
 
+test('every theme describes a physical surface', () => {
+  const knobs = [
+    'paperFiber', 'inkMottle', 'lineWobble', 'halftone', 'aging', 'gores', 'varnish', 'varnishRoughness',
+  ] as const;
+  for (const t of THEMES) {
+    const s = t.globe.surface;
+    assert.ok(s, `${t.id} needs a surface`);
+    for (const k of knobs) {
+      const v = s[k];
+      assert.equal(typeof v, 'number', `${t.id}.surface.${k} must be a number`);
+      assert.ok(v >= 0 && v <= 1, `${t.id}.surface.${k} is ${v}, must be 0..1`);
+    }
+  }
+});
+
+test('the themes differ in surface character, not just color', () => {
+  // If every theme shares one surface the knobs are decorative. Chalkboard is slate,
+  // Blueprint is drafting paper, Vintage Atlas is old and foxed: they must not match.
+  const fingerprint = (id: string) => {
+    const s = THEMES.find((t) => t.id === id)!.globe.surface;
+    return `${s.varnish}|${s.halftone}|${s.aging}|${s.lineWobble}`;
+  };
+  const all = THEMES.map((t) => fingerprint(t.id));
+  assert.equal(new Set(all).size, THEMES.length, 'two themes share a surface fingerprint');
+
+  const chalk = THEMES.find((t) => t.id === 'chalkboard')!.globe.surface;
+  assert.ok(chalk.varnish < 0.1, 'slate is not varnished');
+  assert.equal(chalk.halftone, 0, 'chalk is not offset-printed');
+  const atlas = THEMES.find((t) => t.id === 'atlas')!.globe.surface;
+  assert.ok(atlas.aging > 0.7, 'the vintage atlas should be the most aged');
+});
+
 test('themeById falls back to the default for anything unrecognized', () => {
   assert.equal(themeById('blueprint').id, 'blueprint');
   assert.equal(themeById('nope').id, DEFAULT_THEME);

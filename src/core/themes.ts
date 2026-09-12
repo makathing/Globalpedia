@@ -20,6 +20,32 @@ export type ThemeId = 'classroom' | 'chalkboard' | 'atlas' | 'blueprint' | 'fiel
 /** Eight fills, in the order the greedy adjacency coloring hands them out. */
 export type Palette = readonly [string, string, string, string, string, string, string, string];
 
+/**
+ * How physical the printed surface looks. These are the difference between a
+ * vector drawing and a paper globe someone actually made: ink that varies in
+ * density, lines with a drawn hand, the fibre of the paper, the seams where
+ * the printed gores meet, and an uneven coat of varnish catching the light.
+ * All 0..1 unless noted.
+ */
+export interface SurfaceTheme {
+  /** Paper fibre in the raster, and how much of it shows up as relief. */
+  paperFiber: number;
+  /** Low-frequency ink density variation across fills and ocean alike. */
+  inkMottle: number;
+  /** Hand-drawn irregularity of coastlines and borders, and plate misregistration. */
+  lineWobble: number;
+  /** Offset-print rosette dots. 0 for anything not printed with ink. */
+  halftone: number;
+  /** Foxing spots, edge wear and rubbed plate. */
+  aging: number;
+  /** Visibility of the seams where the paper gores were joined. */
+  gores: number;
+  /** Clearcoat strength. 0 is dead matte, e.g. slate. */
+  varnish: number;
+  /** Base roughness under the coat. Higher is duller. */
+  varnishRoughness: number;
+}
+
 /** Everything the Three.js side needs to paint a theme. */
 export interface GlobeTheme {
   /** Sea color, filled across the whole raster before land. */
@@ -35,6 +61,8 @@ export interface GlobeTheme {
   fillAlpha: number;
   /** Paper-grain noise over the raster. 0 disables it. */
   grainAlpha: number;
+  /** The physical character of the printed surface. */
+  surface: SurfaceTheme;
   /** Meridian ring, pole pins, finials, stem, band and collar share one material. */
   brass: number;
   /** The base disc. */
@@ -152,6 +180,7 @@ export const THEMES: readonly Theme[] = [
       graticule: '#3b2f2a',
       fillAlpha: 1,
       grainAlpha: 0.045,
+      surface: { paperFiber: 0.55, inkMottle: 0.5, lineWobble: 0.5, halftone: 0.35, aging: 0.4, gores: 0.35, varnish: 0.5, varnishRoughness: 0.35 },
       brass: 0xb8925a,
       wood: 0x4a2e1f,
       sphereTint: 0xffffff,
@@ -218,6 +247,7 @@ export const THEMES: readonly Theme[] = [
       graticule: '#dfe8e0',
       fillAlpha: 0.62,
       grainAlpha: 0.1,
+      surface: { paperFiber: 0.85, inkMottle: 0.7, lineWobble: 0.9, halftone: 0, aging: 0.2, gores: 0.1, varnish: 0.04, varnishRoughness: 0.88 },
       brass: 0xb8c2be,
       wood: 0x5a6460,
       sphereTint: 0xffffff,
@@ -284,6 +314,7 @@ export const THEMES: readonly Theme[] = [
       graticule: '#4a3520',
       fillAlpha: 1,
       grainAlpha: 0.075,
+      surface: { paperFiber: 0.7, inkMottle: 0.8, lineWobble: 0.6, halftone: 0.45, aging: 0.9, gores: 0.6, varnish: 0.42, varnishRoughness: 0.46 },
       brass: 0xa8813c,
       wood: 0x3a2114,
       sphereTint: 0xffffff,
@@ -350,6 +381,7 @@ export const THEMES: readonly Theme[] = [
       graticule: '#cfe6ff',
       fillAlpha: 0.36,
       grainAlpha: 0,
+      surface: { paperFiber: 0.5, inkMottle: 0.3, lineWobble: 0.35, halftone: 0.1, aging: 0.15, gores: 0.2, varnish: 0.14, varnishRoughness: 0.72 },
       brass: 0x9fb4c6,
       wood: 0x243a52,
       sphereTint: 0xffffff,
@@ -416,6 +448,7 @@ export const THEMES: readonly Theme[] = [
       graticule: '#3d4a32',
       fillAlpha: 1,
       grainAlpha: 0.04,
+      surface: { paperFiber: 0.6, inkMottle: 0.45, lineWobble: 0.72, halftone: 0.2, aging: 0.3, gores: 0.25, varnish: 0.2, varnishRoughness: 0.62 },
       brass: 0x9c7a4a,
       wood: 0x5c4326,
       sphereTint: 0xffffff,
@@ -482,6 +515,7 @@ export const THEMES: readonly Theme[] = [
       graticule: '#0e171b',
       fillAlpha: 1,
       grainAlpha: 0.05,
+      surface: { paperFiber: 0.5, inkMottle: 0.5, lineWobble: 0.5, halftone: 0.3, aging: 0.45, gores: 0.35, varnish: 0.66, varnishRoughness: 0.3 },
       brass: 0xc9a05a,
       wood: 0x38251a,
       sphereTint: 0xffffff,
