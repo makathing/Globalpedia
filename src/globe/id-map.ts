@@ -25,6 +25,19 @@ export interface IdMap {
    * first. Where there is ink the ink wins; one pixel outside it, nothing has changed.
    */
   labelInk: Uint16Array;
+  /**
+   * Where the printed names' **bounding boxes** are — a name's whole rectangle, claimed only
+   * where no polygon already held the pixel.
+   *
+   * These used to be written straight into `index`, which quietly made `index` stop meaning
+   * "land". A name set out over the sea, or one simply overhanging its coast, left its box on
+   * open water, and 1.84% of the ocean answered "land" to anything that asked. Picking did not
+   * care; the creatures did, and a polar bear ended up standing in Baffin Bay.
+   *
+   * So the boxes live here instead, and only `lookupId` consults them. `index` is polygons and
+   * nothing else again.
+   */
+  labelBox: Uint16Array;
 }
 
 /**
@@ -36,11 +49,24 @@ export interface IdMap {
  * which is right for a click and wrong for a ship.
  */
 export function lookupCountryId(idMap: IdMap, u: number, v: number): string | null {
-  const { width, height, index, iso3s } = idMap;
+  return resolve(idMap, u, v, false);
+}
+
+/**
+ * The shared walk. A polygon wins outright; then, for the pointer only, a name's box may
+ * claim a pixel no polygon held; otherwise a 3×3 vote recovers anti-aliased coastline.
+ * Boxes are checked before the vote because that is where they used to sit, inside `index`.
+ */
+function resolve(idMap: IdMap, u: number, v: number, useBoxes: boolean): string | null {
+  const { width, height, index, iso3s, labelBox } = idMap;
   const x = Math.min(width - 1, Math.max(0, Math.floor(u * width)));
   const y = Math.min(height - 1, Math.max(0, Math.floor((1 - v) * height)));
   const direct = index[y * width + x];
   if (direct) return iso3s[direct - 1];
+  if (useBoxes && labelBox.length) {
+    const box = labelBox[y * width + x];
+    if (box) return iso3s[box - 1];
+  }
   const votes = new Map<number, number>();
   for (let dy = -1; dy <= 1; dy++) {
     const yy = y + dy;
@@ -62,7 +88,7 @@ export function lookupCountryId(idMap: IdMap, u: number, v: number): string | nu
   return best ? iso3s[best - 1] : null;
 }
 
-/** What the reader is pointing at: printed ink wins, then the territory beneath it. */
+/** What the reader is pointing at: printed ink, then land, then a name's box. */
 export function lookupId(idMap: IdMap, u: number, v: number): string | null {
   const { width, height, iso3s, labelInk } = idMap;
   if (labelInk.length) {
@@ -71,5 +97,5 @@ export function lookupId(idMap: IdMap, u: number, v: number): string | null {
     const ink = labelInk[y * width + x];
     if (ink) return iso3s[ink - 1];
   }
-  return lookupCountryId(idMap, u, v);
+  return resolve(idMap, u, v, true);
 }

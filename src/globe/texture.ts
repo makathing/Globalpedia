@@ -554,7 +554,7 @@ function buildIdMap(shapesByIndex: (CountryShape | null)[], width: number): IdMa
     if (idx !== undefined) index[p] = idx;
   }
   canvas.width = canvas.height = 1; // release the backing store eagerly
-  return { width, height, index, iso3s, labelInk: new Uint16Array(0) };
+  return { width, height, index, iso3s, labelInk: new Uint16Array(0), labelBox: new Uint16Array(0) };
 }
 
 /**
@@ -675,6 +675,8 @@ const DOT_PX = 2;
  */
 function stampLabelBoxes(idMap: IdMap, labels: LabelLayout): Map<string, number> {
   const { width, height, index, iso3s } = idMap;
+  const labelBox = new Uint16Array(width * height);
+  idMap.labelBox = labelBox;
   const byIso = new Map<string, number>(iso3s.map((iso, i) => [iso, i + 1]));
   const k = width / labels.width;
   // Collected first, written after: every box is judged against the *polygon* index, so one
@@ -710,8 +712,10 @@ function stampLabelBoxes(idMap: IdMap, labels: LabelLayout): Map<string, number>
       }
     }
   }
+  // Into the overlay, never into `index`: a box must not turn sea into land for anything
+  // that asks a geography question. The guard still stands so two boxes cannot fight.
   for (let i = 0; i < pending.length; i += 2) {
-    if (index[pending[i]] === 0) index[pending[i]] = pending[i + 1];
+    if (index[pending[i]] === 0 && labelBox[pending[i]] === 0) labelBox[pending[i]] = pending[i + 1];
   }
   return byIso;
 }

@@ -836,27 +836,56 @@ export function createLife(idMap: IdMap, theme: GlobeTheme, opts: LifeOptions = 
   // Resolve each route to unit-vector legs once. Ports are given at their seaward approach, so
   // a leg is a short great circle between two points of open water; the helm below only has to
   // handle the headlands that a straight arc between them still clips.
+  //
+  // The voyage runs OUT along the sailing directions and BACK again. It used to close the loop
+  // by joining the last port straight to the first, and that closing arc was the one leg nobody
+  // designed: Mombasa to Lagos is a line across Africa, Alexandria to Gibraltar one across the
+  // Maghreb. A ship on it found no water to port or starboard and did the only safe thing —
+  // held station — so it sat still for the rest of the session. Out and back is what a liner
+  // service actually does, and it means every leg is one that was drawn as a sea leg.
   const routeLegs: Leg[][] = [];
   for (const route of ROUTES) {
     const pts: [number, number][] = route.map((m) => (typeof m === 'string' ? PORTS[m] : m));
     const legs: Leg[] = [];
-    for (let i = 0; i < pts.length; i++) {
-      const a = pts[i];
-      const b = pts[(i + 1) % pts.length]; // the last leg runs home, so the voyage loops
+    const addLeg = (a: [number, number], b: [number, number]): void => {
       const av = latLngToVector3(a[0], a[1], 1);
       const bv = latLngToVector3(b[0], b[1], 1);
       const angle = av.angleTo(bv);
       if (angle > 1e-4) legs.push({ a: av, b: bv, angle });
-    }
+    };
+    for (let i = 0; i + 1 < pts.length; i++) addLeg(pts[i], pts[i + 1]);
+    for (let i = pts.length - 1; i > 0; i--) addLeg(pts[i], pts[i - 1]);
     if (legs.length) routeLegs.push(legs);
   }
 
   const shipCount = Math.round(target * 0.34);
   const shipKinds: Kind[] = ['steamer', 'steamer', 'schooner'];
+  const routeTotal = routeLegs.map((legs) => legs.reduce((a, l) => a + l.angle, 0));
+  // How many ships each route carries, so each ship can be spaced along its own line.
+  const routeShips = routeLegs.map(() => 0);
+  for (let i = 0; i < shipCount; i++) routeShips[i % routeLegs.length]++;
+  const routeSeen = routeLegs.map(() => 0);
   for (let i = 0; i < shipCount; i++) {
-    const legs = routeLegs[i % routeLegs.length];
+    const r = i % routeLegs.length;
+    const legs = routeLegs[r];
     const kind = shipKinds[(rnd() * shipKinds.length) | 0];
-    const leg = (rnd() * legs.length) | 0;
+    // Stratified along the OUTBOUND half rather than dropped on the whole line at random.
+    //
+    // Two things went wrong with the obvious version. Placed independently, a dozen ships
+    // sharing a route put two of them on the same pixel surprisingly often, and two overlapping
+    // hulls read as one smudge rather than as two ships. Spreading them evenly over the whole
+    // out-and-back line then made it worse and systematically so: the point at arc s outbound
+    // IS the point at 2L - s homeward, so ship k and ship m-1-k are exact geographic twins, and
+    // half the fleet had a double. Spacing them along the outbound half only gives every ship
+    // its own stretch of water; they spread into the return half by themselves as they turn,
+    // and having drawn their speeds from a range they stay spread. Regular sailings are also
+    // what a liner service looks like; the jitter keeps it from being a metronome.
+    let along = ((routeSeen[r]++ + 0.2 + 0.6 * rnd()) / routeShips[r]) * routeTotal[r] * 0.5;
+    let leg = 0;
+    while (leg < legs.length - 1 && along >= legs[leg].angle) {
+      along -= legs[leg].angle;
+      leg++;
+    }
     creatures.push({
       kind,
       lat: 0,
@@ -865,7 +894,7 @@ export function createLife(idMap: IdMap, theme: GlobeTheme, opts: LifeOptions = 
       speed: KIND_SPEED[kind] * (0.75 + rnd() * 0.5) * DEG,
       legs,
       leg,
-      along: rnd() * legs[leg].angle,
+      along,
       avoid: 0,
       homeLat: 0,
       homeLng: 0,
@@ -927,6 +956,15 @@ export function createLife(idMap: IdMap, theme: GlobeTheme, opts: LifeOptions = 
   for (const region of REGIONS) {
     const n = Math.max(1, Math.round((landCount * region.weight) / weightSum));
     const [latMin, latMax, lngMin, lngMax] = region.box;
+    /**
+     * Elbow room, in degrees: a candidate closer than this to an animal already placed in the
+     * same region is rejected. Sichuan and the altiplano are small enough that at a high
+     * population plain rejection sampling will stack two pandas on the same pixel, and two
+     * silhouettes on one spot read as a smudge rather than as two animals. Expressed in
+     * silhouette widths so it scales with the drawing, not with the globe.
+     */
+    const spacing = (BASE_SCALE * KIND_SCALE[region.kind] * 1.8) / DEG;
+    const placed: { lat: number; lng: number }[] = [];
     for (let i = 0; i < n; i++) {
       let lat = 0;
       let lng = 0;
@@ -936,9 +974,20 @@ export function createLife(idMap: IdMap, theme: GlobeTheme, opts: LifeOptions = 
       for (let t = 0; t < 400 && !ok; t++) {
         lat = latMin + rnd() * (latMax - latMin);
         lng = lngMin + rnd() * (lngMax - lngMin);
-        ok = land(lat, lng, region.iso);
+        if (!land(lat, lng, region.iso)) continue;
+        // Spacing is a preference, not a requirement: the last quarter of the attempts drops it
+        // so that a region too small to hold its share still fills rather than coming up short.
+        if (t < 300) {
+          let crowded = false;
+          for (const q of placed) {
+            if (arcDeg(lat, lng, q.lat, q.lng) < spacing) { crowded = true; break; }
+          }
+          if (crowded) continue;
+        }
+        ok = true;
       }
       if (!ok) continue;
+      placed.push({ lat, lng });
       creatures.push({
         kind: region.kind,
         lat,
@@ -1107,39 +1156,60 @@ export function createLife(idMap: IdMap, theme: GlobeTheme, opts: LifeOptions = 
   const AVOID_STEP = 0.5 * DEG;
   const AVOID_MAX = 16;
 
-  function steer(c: Creature): void {
+  /**
+   * Returns whether the helm found water. `tryAvoid` never moves a ship it cannot place, so a
+   * false here means the ship is holding station exactly where it was — the one outcome that
+   * can never put it ashore — and the caller can tell that apart from a normal step.
+   */
+  function steer(c: Creature): boolean {
     onLeg(c);
+    let placed = false;
     // Try the helm where it already is, then straighten toward the rhumb, then search outward.
     if (tryAvoid(c, c.avoid)) {
+      placed = true;
       const eased = c.avoid * 0.94;
       if (Math.abs(eased) < AVOID_STEP * 0.5) c.avoid = 0;
       else if (tryAvoid(c, eased)) c.avoid = eased;
-      else tryAvoid(c, c.avoid);
     } else {
-      let found = false;
-      for (let k = 1; k <= AVOID_MAX && !found; k++) {
+      for (let k = 1; k <= AVOID_MAX && !placed; k++) {
         for (const sign of [1, -1]) {
           const off = c.avoid + sign * k * AVOID_STEP;
           if (tryAvoid(c, off)) {
             c.avoid = off;
-            found = true;
+            placed = true;
             break;
           }
         }
       }
-      // If nothing to port or starboard is water, `tryAvoid` left the ship exactly where it
-      // was: it holds station until the arc clears, which is the one outcome that can never
-      // put it ashore. `found` is only read for that reason.
-      void found;
     }
     // Course made good, which for a small offset is the great circle's own tangent.
     eastAt(c.lat, c.lng, east);
     northAt(c.lat, c.lng, north);
     c.heading = Math.atan2(tangent.dot(east), tangent.dot(north));
+    return placed;
   }
 
+  /**
+   * A ship has to be on water before the first frame, not merely after its first successful
+   * step. Because `tryAvoid` declines to move a ship it cannot place, one whose spawn point was
+   * blocked kept the (0, 0) it was constructed with and lay in the Gulf of Guinea for the whole
+   * session. Walk it along its own sailing directions until the helm finds water.
+   */
   function placeShip(c: Creature): void {
-    steer(c);
+    const legs = c.legs!;
+    for (let tries = 0; tries < legs.length * 4; tries++) {
+      if (steer(c)) return;
+      c.along += legs[c.leg].angle * 0.25;
+      while (c.along >= legs[c.leg].angle) {
+        c.along -= legs[c.leg].angle;
+        c.leg = (c.leg + 1) % legs.length;
+      }
+    }
+    // No water anywhere on the route: impossible for a designed route, but never leave a ship
+    // sitting on the construction sentinel.
+    toLatLng(legs[0].a, here);
+    c.lat = here.lat;
+    c.lng = here.lng;
   }
 
   function stepShip(c: Creature, dt: number): void {
