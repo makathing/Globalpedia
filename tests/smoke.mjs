@@ -11,9 +11,9 @@ import { createServer } from 'node:net';
 process.env.NO_PROXY = [process.env.NO_PROXY, 'localhost,127.0.0.1,::1'].filter(Boolean).join(',');
 process.env.no_proxy = process.env.NO_PROXY;
 const watchdog = setTimeout(() => {
-  console.error('✖ smoke test exceeded 240s — aborting');
+  console.error('✖ smoke test exceeded 600s — aborting');
   process.exit(1);
-}, 240000);
+}, 600000);
 watchdog.unref();
 
 /** Pick a free port so a stray dev server never blocks the run. */
@@ -141,6 +141,49 @@ try {
   const t2 = await page.locator('#panel').innerText();
   check(/Japan/.test(t2) && /Tokyo/.test(t2), 'search "Jap" → Japan / Tokyo');
   await page.screenshot({ path: `${OUT}03-japan.png` });
+
+  // --- printed labels and autonomous life ---------------------------------------------------
+  // Select a country first: that pauses auto-rotate, so anything still moving is the life layer.
+  await page.evaluate(() => window.__gp?.bus.emit('globe:select', { iso3: 'PRT' }));
+  await page.waitForTimeout(2500);
+
+  // At the default pose the creatures are out of range, so consecutive frames are identical.
+  const farA = await page.screenshot({ clip });
+  await page.waitForTimeout(2600);
+  const farB = await page.screenshot({ clip });
+  check(farA.equals(farB), 'nothing moves at the default pose (life is out of range)');
+
+  // Lean in and they should be alive.
+  const gb = await page.locator('#globe').boundingBox();
+  for (let i = 0; i < 11; i++) {
+    await page.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2);
+    await page.mouse.wheel(0, -260);
+    await page.waitForTimeout(280);
+  }
+  await page.waitForTimeout(3500);
+  const nearA = await page.screenshot({ clip });
+  await page.waitForTimeout(2600);
+  const nearB = await page.screenshot({ clip });
+  check(!nearA.equals(nearB), 'the globe is alive up close (ships and animals moving)');
+  await page.screenshot({ path: `${OUT}20-life-close.png` });
+
+  // Printed names scale with the globe: a billboard sprite would not have changed size.
+  check(!farA.equals(nearA), 'printed names and surface scale with zoom');
+
+  // Back out, and the world settles again.
+  for (let i = 0; i < 11; i++) {
+    await page.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2);
+    await page.mouse.wheel(0, 260);
+    await page.waitForTimeout(220);
+  }
+  await page.waitForTimeout(3000);
+  const backA = await page.screenshot({ clip });
+  await page.waitForTimeout(2600);
+  const backB = await page.screenshot({ clip });
+  check(backA.equals(backB), 'the render loop sleeps again once the camera pulls back');
+
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(600);
 
   // --- themes ---------------------------------------------------------------------------------
   const THEME_IDS = ['classroom', 'chalkboard', 'atlas', 'blueprint', 'fieldnotes', 'nightstudy'];

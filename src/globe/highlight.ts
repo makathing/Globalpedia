@@ -23,7 +23,7 @@ export interface HighlightLayer {
   dispose(): void;
 }
 
-export function createHighlightLayer(textures: GlobeTextures, theme: GlobeTheme, width = 2048): HighlightLayer {
+export function createHighlightLayer(textures: GlobeTextures, theme: GlobeTheme, width = 4096): HighlightLayer {
   let colors = theme;
   const height = width / 2;
   const canvas = document.createElement('canvas');
@@ -84,13 +84,13 @@ export function createHighlightLayer(textures: GlobeTextures, theme: GlobeTheme,
       ctx.moveTo(x - half, y);
       ctx.lineTo(x + half, y);
       ctx.lineCap = 'round';
-      ctx.globalAlpha = 0.25;
+      ctx.globalAlpha = 0.18;
       ctx.strokeStyle = soft;
-      ctx.lineWidth = Math.max(2.5, w * 0.22);
+      ctx.lineWidth = Math.max(2.5, w * 0.16);
       ctx.stroke();
-      ctx.globalAlpha = 0.75;
+      ctx.globalAlpha = 0.6;
       ctx.strokeStyle = solid;
-      ctx.lineWidth = Math.max(1, w * 0.07);
+      ctx.lineWidth = Math.max(1, w * 0.045);
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
