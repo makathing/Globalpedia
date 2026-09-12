@@ -24,6 +24,7 @@ import {
   Group,
   HemisphereLight,
   Mesh,
+  MeshPhysicalMaterial,
   MeshStandardMaterial,
   PerspectiveCamera,
   Scene,
@@ -39,6 +40,7 @@ import {
 } from 'three';
 import type { GlobeTheme } from '../core/themes';
 import { TILT } from './math';
+import { applySurfaceMaterial } from './surface';
 
 export const GLOBE_RADIUS = 1;
 export const RING_RADIUS = 1.075;
@@ -64,7 +66,8 @@ export interface GlobeScene {
   camera: PerspectiveCamera;
   rig: Group;
   standRig: Group;
-  sphere: Mesh<SphereGeometry, MeshStandardMaterial>;
+  /** Physical, not standard: a varnished paper globe has a coat over the ink (see surface.ts). */
+  sphere: Mesh<SphereGeometry, MeshPhysicalMaterial>;
   mapTexture: CanvasTexture;
   /**
    * The one material shared by the ring, both pole pins, both finials, the base
@@ -186,12 +189,12 @@ export function createGlobeScene(
   const mapTexture = new CanvasTexture(mapCanvas);
   mapTexture.colorSpace = SRGBColorSpace;
   mapTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  const sphere = new Mesh(
-    new SphereGeometry(GLOBE_RADIUS, 128, 96),
-    // Varnished paper, not plastic: mid roughness and next to no metalness.
-    // `color` multiplies the map texture; 0xffffff means "no tint".
-    new MeshStandardMaterial({ map: mapTexture, color: theme.sphereTint, roughness: 0.55, metalness: 0.02 }),
-  );
+  // Varnished paper, not plastic. A flat roughness with no bump map returns light perfectly
+  // evenly, which is exactly what made this read as a computer drawing; surface.ts supplies
+  // the fibre relief, the patchy gloss and the clearcoat. `color` multiplies the map texture.
+  const sphereMat = new MeshPhysicalMaterial({ map: mapTexture, color: theme.sphereTint });
+  applySurfaceMaterial(sphereMat, theme);
+  const sphere = new Mesh(new SphereGeometry(GLOBE_RADIUS, 128, 96), sphereMat);
   rig.add(sphere);
 
   const stand = buildStand(theme);

@@ -10,6 +10,7 @@ import type { GeometryCollection, GeometryObject, Objects, Topology } from 'topo
 import type { CountryRecord } from '../core/types';
 import { DEFAULT_THEME, themeById, type GlobeTheme } from '../core/themes';
 import { projectX, projectY } from './math';
+import { compositeSurface, drawAging, drawGoreSeams } from './surface';
 
 /** Properties carried by production `public/data/world-50m.json` geometries. */
 export interface WorldProps {
@@ -110,7 +111,7 @@ function assignColors(geometries: GeometryObject<WorldProps>[], palette: readonl
 
 /** Append a Polygon / MultiPolygon to the current path in raster coordinates. */
 export function traceGeometry(
-  ctx: CanvasRenderingContext2D,
+  ctx: CanvasPath,
   geometry: AreaGeometry,
   width: number,
   height: number,
@@ -129,7 +130,7 @@ export function traceGeometry(
   }
 }
 
-function traceLines(ctx: CanvasRenderingContext2D, lines: GeoJSON.MultiLineString, width: number, height: number): void {
+function traceLines(ctx: CanvasPath, lines: GeoJSON.MultiLineString, width: number, height: number): void {
   for (const line of lines.coordinates) {
     for (let i = 0; i < line.length; i++) {
       const x = projectX(line[i][0], width);
@@ -147,33 +148,6 @@ function makeCanvas(width: number, height: number): [HTMLCanvasElement, CanvasRe
   const ctx = canvas.getContext('2d', { alpha: false });
   if (!ctx) throw new Error('2D canvas context unavailable');
   return [canvas, ctx];
-}
-
-/** The speckle tile, built once: a theme switch reuses it instead of re-running the LCG. */
-let grainTile: HTMLCanvasElement | null = null;
-
-/** A tiling grey-speckle pattern that reads as paper grain when drawn at low alpha. */
-function makeGrainPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
-  if (!grainTile) {
-    const size = 256;
-    const tile = document.createElement('canvas');
-    tile.width = tile.height = size;
-    const tctx = tile.getContext('2d');
-    if (!tctx) return null;
-    const img = tctx.createImageData(size, size);
-    const d = img.data;
-    // Seeded LCG so the grain is deterministic between runs.
-    let seed = 12345;
-    for (let i = 0; i < d.length; i += 4) {
-      seed = (seed * 1664525 + 1013904223) >>> 0;
-      const v = (seed >>> 24) & 255;
-      d[i] = d[i + 1] = d[i + 2] = v;
-      d[i + 3] = 255;
-    }
-    tctx.putImageData(img, 0, 0);
-    grainTile = tile;
-  }
-  return ctx.createPattern(grainTile, 'repeat');
 }
 
 function drawGraticule(
@@ -229,66 +203,100 @@ function drawGraticule(
 }
 
 /**
+ * The theme-independent geometry of a paint, traced once at build time and reused by every
+ * repaint. Re-walking ~250 polygons and the whole arc mesh on each theme switch was pure
+ * waste, and retiring it is what pays for the extra stroke passes below.
+ */
+interface PaintPaths {
+  /** Parallel to `shapesByIndex`; null wherever that entry is null. */
+  fills: (Path2D | null)[];
+  borders: Path2D;
+}
+
+/**
  * Paint the visible map into `ctx`, which must already be `width` × `width / 2`.
  * Every colour comes from `theme`; the per-country palette *indices* do not, so a
  * repaint keeps the map's colouring topology and swaps only the hues.
  *
- * `borders` is the pre-computed arc mesh — it is expensive and theme-independent,
- * so the caller hangs on to it across repaints.
+ * The order matters. Ink mottle goes over the *finished* map — fills, ocean and line-work
+ * together — because that is how ink density actually behaves; paper and halftone sit above
+ * the ink; age sits above the print; and the gore seams go last, because the join is the
+ * outermost physical thing on the object.
  */
 function paintMap(
   ctx: CanvasRenderingContext2D,
   shapesByIndex: (CountryShape | null)[],
-  borders: GeoJSON.MultiLineString,
+  paths: PaintPaths,
   width: number,
   theme: GlobeTheme,
 ): void {
   const height = width / 2;
   const s = width / 8192; // stroke widths are specified "at 8k"
 
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+
   // Ocean.
   ctx.globalAlpha = 1;
   ctx.fillStyle = theme.ocean;
   ctx.fillRect(0, 0, width, height);
 
-  // Country fills. fillAlpha < 1 lets the sea show through, for line-work themes.
+  // Country fills. fillAlpha < 1 lets the sea show through, for line-work looks.
   ctx.save();
   ctx.globalAlpha = theme.fillAlpha;
-  for (const shape of shapesByIndex) {
-    if (!shape) continue;
+  for (let i = 0; i < shapesByIndex.length; i++) {
+    const shape = shapesByIndex[i];
+    const path = paths.fills[i];
+    if (!shape || !path) continue;
     ctx.fillStyle = theme.palette[shape.paletteIndex];
-    ctx.beginPath();
-    traceGeometry(ctx, shape.geometry, width, height);
-    ctx.fill('evenodd');
+    ctx.fill(path, 'evenodd');
   }
   ctx.restore();
-
-  // Paper grain over everything (land and sea), very subtle. A full-raster pattern
-  // fill is one of the two costly steps here, so skip it outright when disabled.
-  if (theme.grainAlpha > 0) {
-    const grain = makeGrainPattern(ctx);
-    if (grain) {
-      ctx.save();
-      ctx.globalAlpha = theme.grainAlpha;
-      ctx.fillStyle = grain;
-      ctx.fillRect(0, 0, width, height);
-      ctx.restore();
-    }
-  }
 
   drawGraticule(ctx, width, height, s, theme.graticule);
 
-  // Borders and coastlines — mesh() yields every arc exactly once.
+  // Borders and coastlines. A single uniform-width pass is the loudest "a computer drew this"
+  // tell there is, so the mesh is stroked three times at sub-pixel offsets: the main line, then
+  // two lighter passes leaning opposite ways, which is literally what plate misregistration on
+  // a cheaply printed map looks like. Every arc is its own subpath with a round cap, so where
+  // arcs meet the alpha of the offset passes accumulates and the ink pools slightly darker —
+  // for free, and without a second full-size canvas.
+  //
+  // Software stroke cost is proportional to total stroked width — measured at ~206 ms per 1×
+  // pass over this mesh at 8k. The widths below sum to 1.95×, not the 2.9× a wide dedicated
+  // "spread" pass would cost, which is what keeps the redraw inside its budget while still
+  // buying all four cues: irregular edge, misregistration, ink spread and pooling.
+  const w = theme.outlineWidth * s;
+  const wob = theme.surface.lineWobble;
+  // Offsets are in raster pixels, NOT multiples of the stroke width: the raster lands on screen
+  // at roughly 1:1 at the zoom this is judged at, so a fraction of a 1.5 px line is invisible.
+  const off = (0.6 + 1.5 * wob) * s;
+  const passes: [number, number, number, number][] = [
+    // lineWidth, alpha, dx, dy
+    [w * 0.95, 1 - 0.16 * wob, 0, 0],
+    [w * 0.55, 0.36 + 0.3 * wob, off, off * 0.55],
+    [w * 0.45, 0.3 + 0.28 * wob, -off * 0.85, -off * 0.45],
+  ];
   ctx.save();
-  ctx.globalAlpha = 1;
   ctx.strokeStyle = theme.outline;
-  ctx.lineWidth = theme.outlineWidth * s;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  ctx.beginPath();
-  traceLines(ctx, borders, width, height);
-  ctx.stroke();
+  for (const [lineWidth, alpha, dx, dy] of passes) {
+    ctx.setTransform(1, 0, 0, 1, dx, dy);
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke(paths.borders);
+  }
   ctx.restore();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  // The physical surface, in the order a real object acquires it.
+  compositeSurface(ctx, width, height, theme.surface, theme.grainAlpha);
+  drawAging(ctx, width, height, s, theme);
+  drawGoreSeams(ctx, width, height, s, theme);
+
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
 }
 
 /**
@@ -406,9 +414,21 @@ export function buildGlobeTextures(
 
   const width = options.mapWidth;
   const [map, mapCtx] = makeCanvas(width, width / 2);
-  // Theme-independent and costly: computed once, reused by every repaint.
-  const borders = mesh(world, collection);
-  paintMap(mapCtx, shapesByIndex, borders, width, options.theme);
+  // Theme-independent and costly: computed once, reused by every repaint. The arc mesh AND
+  // the traced paths both live here — a repaint should swap colours, not re-walk geometry.
+  const borderMesh = mesh(world, collection);
+  const borders = new Path2D();
+  traceLines(borders, borderMesh, width, width / 2);
+  const paths: PaintPaths = {
+    borders,
+    fills: shapesByIndex.map((shape) => {
+      if (!shape) return null;
+      const path = new Path2D();
+      traceGeometry(path, shape.geometry, width, width / 2);
+      return path;
+    }),
+  };
+  paintMap(mapCtx, shapesByIndex, paths, width, options.theme);
 
   const pickable = shapesByIndex.map((s) => (s && shapes.has(s.iso3) ? s : null));
   const idMap = buildIdMap(pickable, options.idWidth ?? 4096);
@@ -418,7 +438,7 @@ export function buildGlobeTextures(
     idMap,
     shapes,
     redraw(theme) {
-      paintMap(mapCtx, shapesByIndex, borders, width, theme);
+      paintMap(mapCtx, shapesByIndex, paths, width, theme);
     },
   };
 }

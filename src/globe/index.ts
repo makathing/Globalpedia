@@ -18,6 +18,7 @@ import { createHighlightLayer } from './highlight';
 import { createLabels } from './labels';
 import { clamp, easeInOutCubic, latLngToVector3 } from './math';
 import { createPicking } from './picking';
+import { applySurfaceMaterial } from './surface';
 import { buildGlobeTextures } from './texture';
 
 export interface GlobeOptions {
@@ -231,8 +232,10 @@ export function createGlobe(
     gs.ambientLight.intensity = t.ambient;
     labels.restyle(t);
     highlight.restyle(t);
-    // Tint the (still old) raster towards the new theme until phase 2 repaints it.
-    sphere.material.color.set(t.sphereTint);
+    // The varnish, the fibre relief and the gloss are material state, not raster state, so
+    // they change on the click rather than waiting for phase 2. This also sets the tint,
+    // which carries the (still old) raster towards the new theme until it is repainted.
+    applySurfaceMaterial(sphere.material, t);
     needsRender = true;
   }
 

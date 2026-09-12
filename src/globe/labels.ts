@@ -20,6 +20,7 @@ import {
 import type { CountryRecord } from '../core/types';
 import type { GlobeTheme } from '../core/themes';
 import { DEG, latLngToVector3, smoothstep } from './math';
+import { hashString, mulberry32 } from './surface';
 
 export type LabelVariant = 'normal' | 'hover' | 'selected';
 
@@ -45,6 +46,8 @@ interface LabelEntry {
   /** canvas height ÷ font size — converts glyph px to sprite px. */
   heightRatio: number;
   aspect: number;
+  /** Seeded from the ISO3, never the name or the variant, so the tilt never moves. */
+  seed: number;
   /** Measured once at build time; re-measuring 250 names is not free. */
   width: number;
   height: number;
@@ -85,12 +88,16 @@ function measure(name: string): { width: number; height: number } {
   return { width: Math.ceil(w + PAD * 2), height: Math.ceil(FONT_PX * 1.5) };
 }
 
+/** Sub-degree tilt, in degrees. Printed type sits fractionally off-true; much more than this reads as a mistake. */
+const TYPE_TILT_DEG = 0.6;
+
 function drawLabel(
   name: string,
   variant: LabelVariant,
   width: number,
   height: number,
   theme: GlobeTheme,
+  seed: number,
 ): Texture {
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -103,12 +110,33 @@ function drawLabel(
     ctx.lineJoin = 'round';
     const cx = width / 2;
     const cy = height / 2 - FONT_PX * 0.06;
+
+    // Real printed type is never perfectly square to the line and never perfectly crisp.
+    // The seed is the country's, not the variant's, so hovering never nudges the name.
+    const rnd = mulberry32(seed);
+    const tilt = (rnd() - 0.5) * 2 * TYPE_TILT_DEG * DEG;
+    const offX = (rnd() - 0.5) * 0.9;
+    const offY = (rnd() - 0.5) * 0.9;
+    const bleed = 0.55 + rnd() * 0.5;
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt);
+    ctx.translate(-cx + offX, -cy + offY);
+
     // Halo in the theme's paper colour, for legibility over ocean and land alike.
     ctx.lineWidth = variant === 'normal' ? 7 : 8;
     ctx.strokeStyle = theme.labelHalo;
     ctx.strokeText(name, cx, cy);
-    ctx.fillStyle = variant === 'hover' ? theme.labelHover : theme.labelInk;
+    const inkColor = variant === 'hover' ? theme.labelHover : theme.labelInk;
+    ctx.fillStyle = inkColor;
     ctx.fillText(name, cx, cy);
+    // Ink spread: a hairline of the same ink bleeding off the glyph edges. Kept well under a
+    // pixel so the letterforms thicken very slightly rather than losing their counters.
+    ctx.save();
+    ctx.globalAlpha = 0.3 + 0.16 * rnd();
+    ctx.lineWidth = bleed;
+    ctx.strokeStyle = inkColor;
+    ctx.strokeText(name, cx, cy);
+    ctx.restore();
     if (variant === 'selected') {
       const w = ctx.measureText(name).width;
       const y = cy + FONT_PX * 0.5;
@@ -144,7 +172,8 @@ export function createLabels(countries: Record<string, CountryRecord>, theme: Gl
     if (!rec || !Array.isArray(rec.latlng)) continue;
     const [lat, lng] = rec.latlng;
     const { width, height } = measure(rec.name);
-    const tex = drawLabel(rec.name, 'normal', width, height, ink);
+    const seed = hashString(iso3);
+    const tex = drawLabel(rec.name, 'normal', width, height, ink, seed);
     const material = new SpriteMaterial({
       map: tex,
       transparent: true,
@@ -163,6 +192,7 @@ export function createLabels(countries: Record<string, CountryRecord>, theme: Gl
       sprite,
       material,
       normal: sprite.position.clone().normalize(),
+      seed,
       heightRatio: height / FONT_PX,
       aspect: width / height,
       width,
@@ -180,7 +210,7 @@ export function createLabels(countries: Record<string, CountryRecord>, theme: Gl
     if (entry.variant === variant) return;
     let tex = entry.textures[variant];
     if (!tex) {
-      tex = drawLabel(entry.name, variant, entry.width, entry.height, ink);
+      tex = drawLabel(entry.name, variant, entry.width, entry.height, ink, entry.seed);
       entry.textures[variant] = tex;
     }
     entry.material.map = tex;
@@ -261,7 +291,7 @@ export function createLabels(countries: Record<string, CountryRecord>, theme: Gl
         }
         // Only the variant this sprite is actually showing is repainted now; the
         // other two are cheap to rebuild on the next hover/selection.
-        const tex = drawLabel(e.name, variant, e.width, e.height, ink);
+        const tex = drawLabel(e.name, variant, e.width, e.height, ink, e.seed);
         e.textures[variant] = tex;
         e.material.map = tex;
         e.material.needsUpdate = true;
