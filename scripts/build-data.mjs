@@ -288,19 +288,44 @@ async function main() {
   const unknownListed = listIso3.filter((i) => !countries[i]);
   if (unknownListed.length) warn(`content/lists reference unknown ISO3: ${unknownListed.join(', ')}`);
 
-  const generatedAt = new Date().toISOString();
-  const countriesJson = JSON.stringify({ generatedAt, countries });
-  const worldJson = JSON.stringify(topo);
-  writeFileSync(join(outDir, 'countries.json'), countriesJson);
-  writeFileSync(join(outDir, 'world-50m.json'), worldJson);
-  writeFileSync(join(outDir, 'sources.json'), JSON.stringify({
-    generatedAt,
+  /**
+   * Keep the previous timestamp when nothing else changed. A fresh `generatedAt` on
+   * every run rewrote all three files each build and left the working tree dirty with
+   * a diff that said nothing, which buries real changes in review.
+   */
+  const carriedTimestamp = (file, body) => {
+    const dest = join(outDir, file);
+    if (!existsSync(dest)) return null;
+    try {
+      const prev = JSON.parse(readFileSync(dest, 'utf8'));
+      if (!prev.generatedAt) return null;
+      const sameShape = JSON.stringify({ ...prev, generatedAt: '' }) === JSON.stringify({ ...body, generatedAt: '' });
+      return sameShape ? prev.generatedAt : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const now = new Date().toISOString();
+  const sourcesBody = {
+    generatedAt: now,
     sources: { ...SOURCES, population: populationInfo,
       wikipedia: { name: 'English Wikipedia / Wikimedia Commons', url: 'https://en.wikipedia.org/w/api.php',
         license: 'text CC BY-SA 4.0; images licensed per file', note: 'fetched in the visitor\'s browser at runtime (src/data/images.ts)' } },
     counts: { countries: Object.keys(countries).length, withContent, withPopulation,
       geometries: topo.objects.countries.geometries.length, flags: mledoze.length - flagFailures.length },
-  }, null, 2) + '\n');
+  };
+
+  const countriesBody = { generatedAt: now, countries };
+  const generatedAt = carriedTimestamp('countries.json', countriesBody) ?? now;
+  countriesBody.generatedAt = generatedAt;
+  sourcesBody.generatedAt = carriedTimestamp('sources.json', sourcesBody) ?? generatedAt;
+
+  const countriesJson = JSON.stringify(countriesBody);
+  const worldJson = JSON.stringify(topo);
+  writeFileSync(join(outDir, 'countries.json'), countriesJson);
+  writeFileSync(join(outDir, 'world-50m.json'), worldJson);
+  writeFileSync(join(outDir, 'sources.json'), JSON.stringify(sourcesBody, null, 2) + '\n');
 
   // summary
   const independent = Object.values(countries).filter((r) => r.independent).length;
