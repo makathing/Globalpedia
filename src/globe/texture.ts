@@ -137,6 +137,65 @@ export function traceGeometry(
   }
 }
 
+/**
+ * Fold a second geometry into a country's shape.
+ *
+ * The world file carries some countries as **several** geometry entries sharing one id —
+ * Australia is the mainland plus a separate entry for its offshore islands — and `shapes`
+ * used to keep whichever came last, so `shapes.get('AUS')` was a five-point island off the
+ * Kimberley coast. That silently shrank the highlight wash to a dot for those countries, and
+ * would have handed the label layout an eight-kilometre-wide Australia to set a name across.
+ * Merging into one MultiPolygon fixes both; the painted fills are unaffected, because those
+ * are drawn per geometry from `shapesByIndex`.
+ */
+function mergeAreas(a: AreaGeometry, b: AreaGeometry): GeoJSON.MultiPolygon {
+  const polysOf = (g: AreaGeometry): GeoJSON.Position[][][] =>
+    g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+  return { type: 'MultiPolygon', coordinates: [...polysOf(a), ...polysOf(b)] };
+}
+
+/**
+ * Longitude span, in degrees, of a country's **main** landmass.
+ *
+ * The whole geometry's bounding box is useless for this: it would hand France the span from
+ * the Atlantic to French Guiana, and the United States the span from Maine to Guam. So each
+ * outer ring is measured on its own, longitudes unwrapped so a ring crossing the antimeridian
+ * stays in one piece, and the ring with the largest bounding box wins — for every country
+ * that is the landmass a reader thinks of as the country, and the one the name is set across.
+ */
+function mainLandmassSpan(geometry: AreaGeometry): number {
+  const polys = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
+  let bestSpan = 0;
+  let bestBox = 0;
+  for (const rings of polys) {
+    const ring = rings[0];
+    if (!ring || ring.length < 4) continue;
+    let lon = ring[0][0];
+    let minLon = lon;
+    let maxLon = lon;
+    let minLat = ring[0][1];
+    let maxLat = ring[0][1];
+    for (let i = 1; i < ring.length; i++) {
+      let d = ring[i][0] - ring[i - 1][0];
+      if (d > 180) d -= 360;
+      else if (d < -180) d += 360;
+      lon += d;
+      if (lon < minLon) minLon = lon;
+      else if (lon > maxLon) maxLon = lon;
+      const lat = ring[i][1];
+      if (lat < minLat) minLat = lat;
+      else if (lat > maxLat) maxLat = lat;
+    }
+    const span = maxLon - minLon;
+    const box = span * (maxLat - minLat);
+    if (box > bestBox) {
+      bestBox = box;
+      bestSpan = span;
+    }
+  }
+  return bestSpan;
+}
+
 function traceLines(ctx: CanvasPath, lines: GeoJSON.MultiLineString, width: number, height: number): void {
   for (const line of lines.coordinates) {
     for (let i = 0; i < line.length; i++) {
@@ -551,7 +610,11 @@ export function buildGlobeTextures(
       paletteIndex: colors[i],
     };
     // Only real ISO3 codes go in the pick map; disputed "-99" style ids are still painted.
-    if (/^[A-Z]{3}$/.test(iso3)) shapes.set(iso3, shape);
+    if (/^[A-Z]{3}$/.test(iso3)) {
+      const existing = shapes.get(iso3);
+      if (existing) existing.geometry = mergeAreas(existing.geometry, shape.geometry);
+      else shapes.set(iso3, shape);
+    }
     return shape;
   });
 
@@ -561,8 +624,11 @@ export function buildGlobeTextures(
   // built exactly once.
   const pickable = shapesByIndex.map((s) => (s && shapes.has(s.iso3) ? s : null));
   const idMap = buildIdMap(pickable, options.idWidth ?? 4096);
+  const spans = new Map<string, number>();
+  for (const shape of shapes.values()) spans.set(shape.iso3, mainLandmassSpan(shape.geometry));
   const labels = layoutLabels(countries, {
     countryAt: (lat, lng) => lookupId(idMap, (lng + 180) / 360, (lat + 90) / 180),
+    lngSpanOf: (iso3) => spans.get(iso3) ?? null,
   });
   stampLabelBoxes(idMap, labels);
 

@@ -1,10 +1,13 @@
 /**
  * Where every country name is *printed* on the map raster.
  *
- * The names are no longer billboards — they are part of the paper, so their position,
- * size and horizontal stretch have to be decided once, in texture space, before anything
- * is drawn. Three modules consume the result: `texture.ts` prints it and stamps it into
- * the pick index, and `highlight.ts` underlines it.
+ * The names are no longer billboards — they are part of the paper, so their position, size
+ * and horizontal stretch have to be decided once, in texture space, before anything is drawn.
+ * Two modules consume the result: `texture.ts` prints it into the map raster and stamps its
+ * boxes into the pick index, and `highlight.ts` rules an underline beneath the selected one.
+ *
+ * Nothing here reads the theme or the camera, so the layout is built exactly once for the
+ * life of the globe and is identical across themes, raster sizes and reloads.
  *
  * ## The one piece of real maths here
  *
@@ -37,17 +40,42 @@ export function labelFont(px: number): string {
 }
 
 /**
+ * How much of its country's width a name should fill, when the country is big enough to
+ * choose. Under about 0.7 the name looks timid on the landmass; over about 0.85 it starts
+ * crowding the borders, and past 1 it is the single thing that makes a globe read as software
+ * rather than as print. Measured over the 123 countries above 60 000 km², this target lands
+ * the median at 0.79 of the country's own width. Small countries cannot reach it and overflow
+ * deliberately — that is what the halo is for — but overflow is then the exception rather
+ * than, as it was when the size came from the area tier alone, the rule.
+ */
+const TARGET_FILL = 0.75;
+
+/** How many rungs below the area tier the extent rule may push a name. */
+const EXTENT_FLOOR_STEPS = 3;
+
+/**
  * Glyph height in reference (8192-wide) texels, largest first.
  *
  * Calibration: at 8192 across, with the globe about 700 px on screen, roughly 3.7 texels
  * land on one screen pixel at the centre of the disc — so divide by 3.7 for the em size a
  * viewer actually sees in the default pose. 96 → 26 px, 80 → 22 px, 66 → 18 px, 54 → 15 px,
- * 44 → 12 px, 36 → 10 px. The bottom rungs are deliberately below comfortable reading size:
- * they are the "lean in" tier, which is exactly how a printed globe behaves.
+ * 44 → 12 px, 36 → 10 px, 30 → 8 px, 25 → 7 px, 21 → 6 px. The bottom rungs are deliberately
+ * below comfortable reading size: they are the "lean in" tier, and they keep crowded regions
+ * looking like dense printed type rather than a map with holes in it. There is no zoom tier —
+ * a name is printed at one size forever, and the viewer moves closer.
+ *
+ * Which rung a name *starts* on comes from `startTierFor` — its country's actual width — not
+ * from its area; collisions then step it further down.
  */
 export const FONT_LADDER: readonly number[] = [96, 80, 66, 54, 44, 36, 30, 25, 21];
 
-/** Area (km²) at or above which a country starts on ladder rung i. */
+/**
+ * Area (km²) at or above which a country may start on ladder rung i. Area is the *clamp*
+ * now, not the driver: it caps how large a name may be set and how small the extent rule may
+ * push it, and the country's actual width in texture space decides where between the two it
+ * lands. Area alone cannot do this job — Chad and Western Sahara can share an area tier while
+ * one name fits inside its border and the other is twice as wide as the territory.
+ */
 const TIER_AREA: readonly number[] = [2_500_000, 800_000, 250_000, 60_000, 10_000];
 
 /** How many rungs a name may step down before it is dropped rather than overlap a neighbour. */
@@ -196,7 +224,7 @@ export interface LabelLayout {
   /** Reference raster the coordinates are expressed in. */
   width: number;
   height: number;
-  /** Placed names, in print order (descending country area). */
+  /** Placed names, in print order: independent states first, then territories, each by area. */
   labels: readonly PlacedLabel[];
   byIso: ReadonlyMap<string, PlacedLabel>;
   /** Names that could not be placed without overlapping one already down. */
@@ -228,6 +256,31 @@ function canvasMeasurer(): MeasureFn {
 function tierFor(area: number): number {
   for (let i = 0; i < TIER_AREA.length; i++) if (area >= TIER_AREA[i]) return i;
   return TIER_AREA.length;
+}
+
+/**
+ * The rung a name *starts* on: the largest one whose set width is still within `TARGET_FILL`
+ * of the country's own width, held between the area tier's rung (never larger) and three
+ * rungs below it (never so small that a 250 000 km² territory with a long name disappears).
+ *
+ * Both widths are measured in texture space, so the horizontal pre-stretch cancels out of the
+ * comparison exactly the way it cancels on the sphere: `unitW · fontPx · scaleX` against the
+ * country's own stretched span. That is why this can be a single division and not a table.
+ */
+function startTierFor(
+  areaTier: number,
+  lngSpanDeg: number | null,
+  unitW: number,
+  scaleX: number,
+  W: number,
+): number {
+  const floor = Math.min(FONT_LADDER.length - 1, areaTier + EXTENT_FLOOR_STEPS);
+  if (lngSpanDeg === null || !(lngSpanDeg > 0) || unitW <= 0) return areaTier;
+  const countryW = (lngSpanDeg / 360) * W;
+  const idealPx = (TARGET_FILL * countryW) / (unitW * scaleX);
+  let tier = areaTier;
+  while (tier < floor && FONT_LADDER[tier] > idealPx) tier++;
+  return tier;
 }
 
 /** 1 / cos(lat): the inverse of the sphere's horizontal compression. Clamped, never < 1. */
@@ -263,14 +316,24 @@ export interface LayoutOptions {
    * its own country (or on nothing) before it accepts one that has wandered next door.
    */
   countryAt?: (lat: number, lng: number) => string | null;
+  /**
+   * Longitude span, in degrees, of the country's main landmass — its bounding box in the same
+   * space the name is set in, so the two are directly comparable. Optional; without it names
+   * fall back to their area tier alone, which sets many of them far too wide.
+   */
+  lngSpanOf?: (iso3: string) => number | null;
 }
 
 /**
- * Deterministic placement: by descending area (ties broken by ISO3), each name takes the
- * first ladder rung whose box clears everything already placed, stepping down at most
- * `MAX_STEP_DOWN` rungs before it is dropped. Nothing here reads the theme or the camera,
- * so the layout is computed exactly once for the life of the globe and is identical across
- * themes, raster sizes and reloads.
+ * Deterministic placement. Names are set in a fixed order (independent states first, then
+ * territories, each by descending area, ISO3 breaking ties) and each one takes the first slot
+ * that is free: starting rung from `startTierFor`, then up to `MAX_STEP_DOWN` rungs smaller,
+ * and at each rung the anchor followed by twenty-four small offsets, nearest first. The whole
+ * ladder is swept up to three times at decreasing fussiness about what the name is standing
+ * on (see `sweep`). A name that never finds a free slot is dropped and listed in `skipped`.
+ *
+ * No randomness that is not seeded from the ISO3, no dependence on iteration order of the
+ * input object beyond the explicit sort: the same data always yields the same map.
  */
 export function layoutLabels(
   countries: Record<string, CountryRecord>,
@@ -278,6 +341,7 @@ export function layoutLabels(
 ): LabelLayout {
   const measure = options.measure ?? canvasMeasurer();
   const countryAt = options.countryAt;
+  const lngSpanOf = options.lngSpanOf;
   const W = LABEL_REF_WIDTH;
   const H = LABEL_REF_HEIGHT;
 
@@ -317,7 +381,8 @@ export function layoutLabels(
 
     const unitW = measure(rec.name);
     const x = projectX(lng, W);
-    const startTier = tierFor(rec.area ?? 0);
+    const areaTier = tierFor(rec.area ?? 0);
+    const startTier = startTierFor(areaTier, lngSpanOf?.(iso3) ?? null, unitW, anchorScaleX, W);
     const lastTier = Math.min(FONT_LADDER.length - 1, startTier + MAX_STEP_DOWN);
 
     const reach = reachDeg(rec.area ?? 0);
