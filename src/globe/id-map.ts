@@ -53,6 +53,22 @@ export function lookupCountryId(idMap: IdMap, u: number, v: number): string | nu
 }
 
 /**
+ * Scratch for the 3×3 vote: at most nine ids, reused on every call.
+ *
+ * This used to be a `Map` built per call, and the call it is built for is the one that
+ * almost always happens. Every point over **water** has `index[p] === 0`, so it falls past
+ * the direct hit and past the boxes and into the vote — and the life layer asks about water
+ * constantly: `steer()` probes twice per ship and `stepWanderer` tries up to seven headings,
+ * some 1,400 lookups a frame of which about 1,300 are at sea. That was ~78,000 short-lived
+ * Maps a second straight into the nursery, on the phone this is all for, to answer "no" 1,300
+ * times. Nine reads and a fixed tally allocate nothing at all, and the common case — nine
+ * zeroes — now costs nine typed-array reads and an early return.
+ *
+ * Module-level and mutable is safe here: JS is single-threaded and `resolve` never re-enters.
+ */
+const voteIds = new Int32Array(9);
+
+/**
  * The shared walk. A polygon wins outright; then, for the pointer only, a name's box may
  * claim a pixel no polygon held; otherwise a 3×3 vote recovers anti-aliased coastline.
  * Boxes are checked before the vote because that is where they used to sit, inside `index`.
@@ -67,22 +83,40 @@ function resolve(idMap: IdMap, u: number, v: number, useBoxes: boolean): string 
     const box = labelBox[y * width + x];
     if (box) return iso3s[box - 1];
   }
-  const votes = new Map<number, number>();
+
+  let n = 0;
   for (let dy = -1; dy <= 1; dy++) {
     const yy = y + dy;
     if (yy < 0 || yy >= height) continue;
+    const row = yy * width;
     for (let dx = -1; dx <= 1; dx++) {
       const xx = (x + dx + width) % width; // wrap across the antimeridian
-      const id = index[yy * width + xx];
-      if (id) votes.set(id, (votes.get(id) ?? 0) + 1);
+      const id = index[row + xx];
+      if (id) voteIds[n++] = id;
     }
   }
+  if (n === 0) return null; // open water, which is most of the questions asked
+  if (n === 1) return iso3s[voteIds[0] - 1];
+
+  // Count each id at its *first* appearance and keep ties on `>`, which is exactly what the
+  // Map version did: insertion order was scan order, and a later id never displaced an equal.
   let best = 0;
   let bestVotes = 0;
-  for (const [id, n] of votes) {
-    if (n > bestVotes) {
+  for (let i = 0; i < n; i++) {
+    const id = voteIds[i];
+    let firstHere = true;
+    for (let j = 0; j < i; j++) {
+      if (voteIds[j] === id) {
+        firstHere = false;
+        break;
+      }
+    }
+    if (!firstHere) continue;
+    let count = 1;
+    for (let j = i + 1; j < n; j++) if (voteIds[j] === id) count++;
+    if (count > bestVotes) {
       best = id;
-      bestVotes = n;
+      bestVotes = count;
     }
   }
   return best ? iso3s[best - 1] : null;

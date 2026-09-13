@@ -23,8 +23,27 @@ export interface HighlightLayer {
   dispose(): void;
 }
 
-export function createHighlightLayer(textures: GlobeTextures, theme: GlobeTheme, width = 4096): HighlightLayer {
+/**
+ * Half the map's linear resolution, which is what this file's own notes have always assumed —
+ * "a quarter of the map's resolution" is the *area*, and the underline is drawn twice partly to
+ * survive it. It was a flat 4096 instead, and that was the one large allocation here that never
+ * looked at either the map size or `maxTextureSize`: a phone, which takes a 4096 map precisely
+ * because it cannot afford an 8192 one, still got the desktop's 4096×2048 highlight — 33 MB of
+ * canvas and some 45 MB on the GPU, for a layer that is invisible until something is hovered,
+ * on the device where the working set was already near where iOS starts discarding tabs.
+ * Deriving it gives a desktop exactly what it had and hands a phone three quarters of it back.
+ */
+function highlightWidth(mapWidth: number, maxTextureSize: number): number {
+  return Math.max(1024, Math.min(maxTextureSize, mapWidth >> 1));
+}
+
+export function createHighlightLayer(
+  textures: GlobeTextures,
+  theme: GlobeTheme,
+  maxTextureSize = 4096,
+): HighlightLayer {
   let colors = theme;
+  const width = highlightWidth(textures.map.width, maxTextureSize);
   const height = width / 2;
   const canvas = document.createElement('canvas');
   canvas.width = width;

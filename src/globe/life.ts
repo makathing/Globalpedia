@@ -15,7 +15,7 @@
  *     and wander comes from a `mulberry32` seeded off `opts.seed`, so the same seed puts the
  *     same whale in the same part of the same sea on every machine and every reload.
  *
- *  2. **One draw call.** All ~450 creatures are instances of a single tangent-aligned quad in
+ *  2. **One draw call.** All ~950 creatures are instances of a single tangent-aligned quad in
  *     one `InstancedMesh`, sampling one procedurally drawn silhouette atlas. Instanced rather
  *     than `Points` because a ship has to point where it is going.
  *
@@ -55,7 +55,7 @@ import { lookupCountryId, type IdMap } from './texture';
 export interface LifeOptions {
   /** Seeds every placement and every wander. Same seed, same world. */
   seed?: number;
-  /** Roughly how many creatures to place (default 440). Split across ships / sea / land. */
+  /** Roughly how many creatures to place (default 950). Split across ships / sea / land. */
   count?: number;
 }
 

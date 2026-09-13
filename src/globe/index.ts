@@ -86,6 +86,13 @@ const SMALL_COUNTRY_DISTANCE = 2.1;
  * avoidable cost on a phone, and `life.update` itself is only ~0.6 ms of it — the cost is the
  * draw. So a frame in which *only* the creature layer moved is paced, and everything the
  * viewer does — drag, pinch, wheel, flight, hover, theme — is exempt and redraws at once.
+ *
+ * The idle drift is paced by the same rule and for the same reason. It turns the globe at
+ * 2.1°/s — about a fifth of a pixel a frame at the limb — and `controls.update` returns true
+ * for it on every single frame, so an untouched globe sitting on a desk was redrawing the whole
+ * scene sixty times a second to move nothing anyone can see. `ctl.idleSpinOnly` is false the
+ * moment a finger is down, an inertia throw is still running, a flight is in the air or the
+ * camera dollies, so none of those are ever paced.
  */
 const ANIM_FPS_FINE = 30;
 const ANIM_FPS_COARSE = 22;
@@ -140,7 +147,8 @@ export function createGlobe(
   const { renderer, scene, camera, globeSpin, sphere } = gs;
 
   // Both ride inside the spinning group, so they turn with the map rather than sliding over it.
-  const highlight = createHighlightLayer(tex, theme);
+  // The highlight sizes itself from the map and the GPU's limit rather than a flat 4096.
+  const highlight = createHighlightLayer(tex, theme, gs.renderer.capabilities.maxTextureSize);
   globeSpin.add(highlight.mesh);
 
   // Ships and animals, ant-scale, absent until the camera comes close.
@@ -350,10 +358,15 @@ export function createGlobe(
     if (ctl.update(dt)) moved = true;
     lifeDt += dt;
 
-    // Creature-only frames are paced; anything the viewer caused is not. The test is made
-    // before `life.update` runs, so a paced-out frame costs nothing at all — no stepping, no
-    // matrix writes, no upload — and the time it banks is handed over on the frame that lands.
-    if (!moved && !needsRender && lifeAnimating && now - lastRenderAt < animIntervalMs) return;
+    // Ambient frames are paced; anything the viewer caused is not. "Ambient" is the creature
+    // layer and the idle drift — the two things that move whether or not anybody is there. The
+    // test is made before `life.update` runs, so a paced-out frame costs nothing at all — no
+    // stepping, no matrix writes, no upload — and the time it banks is handed over on the frame
+    // that lands.
+    const ambient = !moved || ctl.idleSpinOnly;
+    if (ambient && !needsRender && (lifeAnimating || ctl.idleSpinOnly) && now - lastRenderAt < animIntervalMs) {
+      return;
+    }
 
     // Life drives its own frames only while it is close enough to be seen; when it
     // returns false the loop goes back to sleep exactly as before.

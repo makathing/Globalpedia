@@ -46,7 +46,7 @@ and `ui:theme {id}` (repaint in that theme).
 | `globe.ts` | renderer, camera, lights, sphere, brass semi-meridian + finials + curved stem + wooden base |
 | `controls.ts` | drag → globe rotation (two axes, unclamped), wheel/pinch → dolly, zoom-scaled rotate speed, auto-rotate that yields to input/selection |
 | `label-layout.ts` | where each country name is printed: position, size from the country's own width, `1/cos(lat)` pre-stretch, collisions, leader lines |
-| `highlight.ts` | 2048×1024 transparent canvas on a 1.002-radius sphere: the wash, plus an underline beneath the printed name |
+| `highlight.ts` | transparent canvas at half the map's width on a 1.002-radius sphere: the wash, plus an underline beneath the printed name |
 | `picking.ts` | pointer → sphere UV → pick index; tap thresholds are per pointer type |
 | `id-map.ts` | the pick index itself: `lookupCountryId` (polygons) and `lookupId` (label ink first, then the 3×3 vote) |
 | `life.ts` | ~950 ships and animals in one InstancedMesh: placement against the id map, the wander, the horizon skip and the dirty-range upload |
@@ -201,6 +201,19 @@ and `ui:theme {id}` (repaint in that theme).
   *something* is moving all the time, and it is ant-sized. So a frame in which **only** the
   creatures moved is capped at 30 fps (22 on a coarse pointer) and is drawn at half the device
   pixel ratio — never below 1 — with the full ratio restored 200 ms after the creatures stop.
+  The **idle drift** is capped by the same rule. It turns the globe at 2.1°/s, about a fifth of a
+  pixel a frame at the limb, and `controls.update` returns true for it on every frame, so an
+  untouched globe on a desk was redrawing the whole scene sixty times a second to move nothing
+  anyone can see. Measured on an untouched page: before, **28.0 redraws a second against 28.0 loop
+  ticks — every single tick**; after, with the renderer made cheap enough that the cap can
+  actually bite, **43.7 ticks a second and 18.2 redraws**, 58% of the drift's frames dropped.
+  `ctl.idleSpinOnly` goes false the instant a finger is down, an inertia throw is still running, a
+  flight is in the air or the camera dollies, so none of those are ever paced.
+  The flag has to track the viewer's share of the pending rotation *separately* and decay it by
+  the same factor, rather than wait for `pendingSpin` to fall under `EPS`: while the globe drifts,
+  `AUTO_ROTATE · dt` is topped up every frame and the damping holds `pendingSpin` at about 0.007
+  rad, twice `EPS`, so a flag cleared that way would latch on at the viewer's first drag and the
+  drift would silently stop being paced for the rest of the session.
   Measured: `life.update` is only ~0.6-0.8 ms of such a frame; the cost is the draw, and at DPR 2
   the resolution drop takes three quarters of the fragments out of it.
   Two rules keep that from being felt. The pacing test is made **before** `life.update` runs and
@@ -235,8 +248,45 @@ and `ui:theme {id}` (repaint in that theme).
   8 px / 500 ms for a pen, and unchanged for a mouse. A second finger cancels the tap outright, so
   a pinch is never a selection, and so does `pointercancel`.
 
+- **Nothing on the hot paths allocates.** Two things were quietly making garbage where it hurt
+  most:
+  - **The land/water oracle.** Every point over water has `index[p] === 0`, so it falls past the
+    direct hit and into the 3×3 vote — and the vote built a `Map` per call. The life layer asks
+    about water constantly (`steer` probes twice per ship, `stepWanderer` tries up to seven
+    headings): ~1,400 lookups a frame, ~1,300 of them at sea, which is some 78,000 short-lived
+    Maps a second on a phone to answer "no". The vote is now nine reads into one module-level
+    `Int32Array` and a fixed tally, with the all-zero case returning on the spot. Ties still fall
+    the same way — first in scan order, `>` not `>=` — and a differential run against the old
+    implementation agrees on 34,056 lookups over 400 random rasters. Measured over 200,000 mixed
+    lookups (69% at sea): **299 ns → 233 ns** a call, −22%. The timing is the smaller half of it;
+    the point is that the call now allocates nothing at all, and a desktop V8 with a roomy
+    nursery is the machine least likely to show what 78,000 dead Maps a second cost a phone.
+  - **The index decode.** Both pick indices were decoded by looking each pixel's packed RGB up in
+    a `Map`: 8.4 million iterations at 4096 across with a hash probe on each of the ~2.5 million
+    that are not sea. But `encodeId` is invertible — red and green *are* the index's two bytes —
+    so `decodeId` recovers it by arithmetic and the blue checksum still rejects anti-aliased
+    blends exactly as before; callers bound the result to the ids they painted, which is all the
+    Map's membership was for. The label boxes also stopped collecting every candidate pixel into
+    a multi-million-entry array for a second pass: that two-phase write existed only while boxes
+    went into `index` itself, and `isClearOfPolygons` reads `index`, which the stamp never
+    writes. Measured: a whole `buildGlobeTextures` at 4096 went 1093 ms → 1052 ms, which is the
+    honest size of it. Varying each dimension alone puts index work at **39%** of the build and
+    the map raster at **36%**, so the decode loops are real but are the smaller part of the
+    smaller half — what costs is rasterising the two index canvases and the two 33 MB
+    `getImageData` copies they need. Cutting boot properly means either yielding between the
+    phases (which makes `createGlobe` async, and so is a decision for its caller) or a smaller
+    index on a coarse pointer — and that one trades away picking accuracy and the resolution of
+    the life layer's land/water oracle, so it is not a decision to take on performance grounds
+    alone.
+
 - **Textures.** 8192×4096 sRGB canvas texture with max anisotropy. Renderer has `alpha: true` so the page
-  background shows.
+  background shows. **Every large allocation is now derived from the GPU's `maxTextureSize` and the
+  pointer**, which the highlight layer alone was not: it was a flat 4096×2048 regardless, so a
+  phone — which takes a 4096 map precisely because it cannot afford an 8192 one — still paid 33 MB
+  of canvas and some 45 MB on the GPU for a layer that is invisible until something is hovered.
+  It is half the map's linear resolution now (a quarter of its area, which is what this file's
+  notes always assumed and what the doubled underline is drawn to survive), clamped to
+  `maxTextureSize`: a desktop keeps exactly what it had, a phone gets three quarters of it back.
 - **The surface is what stops it looking like vector art.** A flat roughness with no bump map returns light
   perfectly evenly, which reads as plastic, and flat fills with one uniform stroke read as a drawing. So
   `surface.ts` gives every theme, from `GlobeTheme.surface`'s eight 0..1 knobs: low-frequency ink density

@@ -85,6 +85,13 @@ export interface GlobeControls {
   /** Has the viewer zoomed or dragged? Once they have, the framing is theirs, not ours. */
   readonly takenOver: boolean;
   /**
+   * True when the last `update` moved the globe and the *only* thing moving it was the idle
+   * drift — no finger down, no inertia still running, no dolly. The host uses it to pace that
+   * drift: it is 2.1°/s, about a fifth of a pixel a frame at the limb, and does not need 60 of
+   * them a second. Anything the viewer caused clears it and gets the full rate.
+   */
+  readonly idleSpinOnly: boolean;
+  /**
    * Re-frame for a new viewport: stretch the default distance and the zoom range by `scale`.
    * The camera itself only follows while the viewer has not taken over and is sitting at the
    * default — a resize must never pull the globe out from under a gesture or a chosen zoom.
@@ -155,6 +162,19 @@ export function createControls(o: ControlsOptions): GlobeControls {
   /** Undelivered rotation, in radians: `Spin` about the globe's axis, `Tilt` about TILT_AXIS. */
   let pendingSpin = 0;
   let pendingTilt = 0;
+  /**
+   * How much of the undelivered rotation is the viewer's, in radians, rather than the drift's.
+   *
+   * It has to be tracked apart rather than read off `pendingSpin`, because while the globe is
+   * drifting `pendingSpin` never settles: `AUTO_ROTATE · dt` is topped up every frame and the
+   * 8% damping holds it at about 0.007 rad, which is twice `EPS`. A flag cleared by "`pending`
+   * fell below EPS" would therefore latch on at the viewer's first drag and never clear, and
+   * the drift would silently stop being paced for the rest of the session. This decays by the
+   * same factor the rotation it stands for does, so it reaches EPS exactly when the viewer's
+   * share of the motion has.
+   */
+  let userPending = 0;
+  let idleSpinOnly = false;
 
   const qDelta = new Quaternion();
   const lastPos = o.camera.position.clone();
@@ -237,8 +257,11 @@ export function createControls(o: ControlsOptions): GlobeControls {
     if (pointers.size === 1) {
       // Drag right → the surface goes right; drag down → it goes down, walking the meridian.
       // Both signs match the camera-orbiting controls this replaced.
-      pendingSpin += dragToRadians(dx);
-      pendingTilt += dragToRadians(dy);
+      const spin = dragToRadians(dx);
+      const tilt = dragToRadians(dy);
+      pendingSpin += spin;
+      pendingTilt += tilt;
+      userPending += Math.abs(spin) + Math.abs(tilt);
       dragTravel += Math.abs(dx) + Math.abs(dy);
       if (dragTravel > TAKEOVER_PX) takenOver = true;
     } else if (pointers.size === 2) {
@@ -274,7 +297,8 @@ export function createControls(o: ControlsOptions): GlobeControls {
 
   // --- frame ------------------------------------------------------------------------------------
   function update(deltaSeconds: number): boolean {
-    if (autoRotating()) pendingSpin += AUTO_ROTATE * deltaSeconds;
+    const drifting = autoRotating();
+    if (drifting) pendingSpin += AUTO_ROTATE * deltaSeconds;
     let moved = false;
     if (Math.abs(pendingSpin) > EPS || Math.abs(pendingTilt) > EPS) {
       rotate(pendingSpin * DAMPING, pendingTilt * DAMPING);
@@ -285,9 +309,15 @@ export function createControls(o: ControlsOptions): GlobeControls {
       pendingSpin = 0;
       pendingTilt = 0;
     }
+    // The viewer's share decays with the rotation it stands for; below EPS their throw is spent
+    // and anything still turning is the drift's alone.
+    userPending *= 1 - DAMPING;
+    if (userPending < EPS) userPending = 0;
     o.camera.position.copy(o.target).addScaledVector(o.viewDir, distance);
-    if (lastPos.distanceToSquared(o.camera.position) > 1e-10) moved = true;
+    const dollied = lastPos.distanceToSquared(o.camera.position) > 1e-10;
+    if (dollied) moved = true;
     lastPos.copy(o.camera.position);
+    idleSpinOnly = moved && drifting && userPending === 0 && !interacting && !dollied;
     return moved;
   }
 
@@ -306,6 +336,9 @@ export function createControls(o: ControlsOptions): GlobeControls {
     },
     get takenOver() {
       return takenOver;
+    },
+    get idleSpinOnly() {
+      return idleSpinOnly;
     },
     setFitScale(scale) {
       const next = scale > 0 && Number.isFinite(scale) ? scale : 1;
@@ -335,6 +368,7 @@ export function createControls(o: ControlsOptions): GlobeControls {
       rotate(pendingSpin, pendingTilt);
       pendingSpin = 0;
       pendingTilt = 0;
+      userPending = 0;
     },
     dispose() {
       window.clearTimeout(resumeTimer);

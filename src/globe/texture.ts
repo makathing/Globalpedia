@@ -521,6 +521,27 @@ function encodeId(i: number): [number, number, number] {
   return [i & 255, (i >> 8) & 255, (i * 97 + 31) & 255];
 }
 
+/**
+ * `encodeId` run backwards.
+ *
+ * Both indices used to decode by looking each pixel's packed RGB up in a `Map` — 8.4 million
+ * iterations at 4096 across, with a hash probe on every one of the two-and-a-half million that
+ * are not sea. But the encoding is invertible by arithmetic: red and green *are* the index's
+ * low and high bytes, so `r | (g << 8)` recovers it outright, and the blue channel's checksum
+ * then does exactly what it was always there to do — an anti-aliased blend of two countries
+ * fails it and decodes as nothing rather than as an unrelated third. Callers still bound the
+ * result to the ids they actually painted, which is what the Map's membership was doing.
+ * Returns 0 for anything that is not a valid encoding.
+ *
+ * Worth knowing before anyone optimises further: measured at 4096, index work is 39% of a
+ * `buildGlobeTextures` and this decode is the smaller part of *that*. The rest is rasterising
+ * the two index canvases and the two full-frame `getImageData` copies they need.
+ */
+function decodeId(r: number, g: number, b: number): number {
+  const i = r | (g << 8);
+  return ((i * 97 + 31) & 255) === b ? i : 0;
+}
+
 function buildIdMap(shapesByIndex: (CountryShape | null)[], width: number): IdMap {
   const height = width / 2;
   const [canvas, ctx] = makeCanvas(width, height);
@@ -529,12 +550,10 @@ function buildIdMap(shapesByIndex: (CountryShape | null)[], width: number): IdMa
   ctx.fillRect(0, 0, width, height);
 
   const iso3s: string[] = [];
-  const lookup = new Map<number, number>(); // packed rgb → 1-based index
   for (const shape of shapesByIndex) {
     if (!shape) continue;
     const idx = iso3s.push(shape.iso3);
     const [r, g, b] = encodeId(idx);
-    lookup.set((r << 16) | (g << 8) | b, idx);
     const css = `rgb(${r},${g},${b})`;
     ctx.fillStyle = css;
     ctx.strokeStyle = css;
@@ -547,11 +566,14 @@ function buildIdMap(shapesByIndex: (CountryShape | null)[], width: number): IdMa
 
   const data = ctx.getImageData(0, 0, width, height).data;
   const index = new Uint16Array(width * height);
+  const count = iso3s.length;
   for (let p = 0, i = 0; p < index.length; p++, i += 4) {
-    const packed = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
-    if (packed === 0) continue;
-    const idx = lookup.get(packed);
-    if (idx !== undefined) index[p] = idx;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    if ((r | g | b) === 0) continue;
+    const id = decodeId(r, g, b);
+    if (id >= 1 && id <= count) index[p] = id;
   }
   canvas.width = canvas.height = 1; // release the backing store eagerly
   return { width, height, index, iso3s, labelInk: new Uint16Array(0), labelBox: new Uint16Array(0) };
@@ -581,18 +603,20 @@ function buildLabelInkIndex(idMap: IdMap, labels: LabelLayout, byIso: Map<string
   ctx.lineCap = 'round';
 
   const k = width / labels.width;
-  const lookup = new Map<number, number>();
   /**
-   * Ids whose name had to be set off its own territory. Their ink is not allowed to outrank a
-   * polygon — see the decode below.
+   * One byte per id, consulted per pixel in the decode below: bit 0 says this id was actually
+   * inked (the membership the packed-RGB `Map` used to provide), bit 1 that its name had to be
+   * set off its own territory, so its ink is not allowed to outrank a polygon.
    */
-  const displaced = new Set<number>();
+  const INKED = 1;
+  const DISPLACED = 2;
+  const flags = new Uint8Array(idMap.iso3s.length + 1);
   for (const label of labels.labels) {
     const id = byIso.get(label.iso3);
     if (id === undefined) continue;
-    if (label.leader) displaced.add(id);
+    flags[id] |= INKED;
+    if (label.leader) flags[id] |= DISPLACED;
     const [r, g, b] = encodeId(id);
-    lookup.set((r << 16) | (g << 8) | b, id);
     const css = `rgb(${r},${g},${b})`;
     const fontPx = label.fontPx * k;
     if (fontPx < 2) continue;
@@ -617,11 +641,13 @@ function buildLabelInkIndex(idMap: IdMap, labels: LabelLayout, byIso: Map<string
   const { index, iso3s } = idMap;
   const ink = new Uint16Array(width * height);
   for (let p = 0, i = 0; p < ink.length; p++, i += 4) {
-    const packed = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
-    if (packed === 0) continue;
-    const id = lookup.get(packed);
-    if (id === undefined) continue;
-    if (displaced.has(id)) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    if ((r | g | b) === 0) continue;
+    const id = decodeId(r, g, b);
+    if (id < 1 || id >= flags.length || (flags[id] & INKED) === 0) continue;
+    if (flags[id] & DISPLACED) {
       // A name standing on its own country may overhang a neighbour and still win the click:
       // the letters of "Belgium" mean Belgium wherever they fall. A name that had to be moved
       // off its country is a different case — it carries a leader line and a dot to say where
@@ -679,9 +705,13 @@ function stampLabelBoxes(idMap: IdMap, labels: LabelLayout): Map<string, number>
   idMap.labelBox = labelBox;
   const byIso = new Map<string, number>(iso3s.map((iso, i) => [iso, i + 1]));
   const k = width / labels.width;
-  // Collected first, written after: every box is judged against the *polygon* index, so one
-  // label's stamp cannot make the next label's fringe test lie.
-  const pending: number[] = [];
+  // Stamped as we go. This used to collect every candidate pixel into an array and write them
+  // in a second pass, so that one label's stamp could not make the next label's fringe test
+  // lie — which mattered when the boxes went into `index` itself. They go into `labelBox` now
+  // and `isClearOfPolygons` only ever reads `index`, which this function never writes, so the
+  // two passes were doing nothing but building a multi-million-entry array of boxed numbers on
+  // the boot path. The `labelBox[p] === 0` guard below is what actually orders the boxes, and
+  // it is unchanged: print order is descending area, so the larger country still wins.
   for (const label of labels.labels) {
     let id = byIso.get(label.iso3);
     if (id === undefined) {
@@ -708,14 +738,11 @@ function stampLabelBoxes(idMap: IdMap, labels: LabelLayout): Map<string, number>
         // Marseille came to select Monaco — a coastal pixel France's polygon did not quite
         // cover at this resolution, claimed by a box from three degrees away.
         if (!isClearOfPolygons(index, width, height, xx, y)) continue;
-        pending.push(p, id);
+        // Into the overlay, never into `index`: a box must not turn sea into land for anything
+        // that asks a geography question. The guard is what stops two boxes fighting.
+        if (labelBox[p] === 0) labelBox[p] = id;
       }
     }
-  }
-  // Into the overlay, never into `index`: a box must not turn sea into land for anything
-  // that asks a geography question. The guard still stands so two boxes cannot fight.
-  for (let i = 0; i < pending.length; i += 2) {
-    if (index[pending[i]] === 0 && labelBox[pending[i]] === 0) labelBox[pending[i]] = pending[i + 1];
   }
   return byIso;
 }
