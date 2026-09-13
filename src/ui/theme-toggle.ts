@@ -7,6 +7,10 @@
  * from anywhere else (the OS preference flipping, the console) still updates the
  * label and the checkmark.
  *
+ * On a phone the card is a bottom sheet over a scrim, with its own Done button.
+ * That is deliberate: it covered the search field as a pinned card, and every row
+ * costs a full map re-raster, so this is not a menu to brush past by accident.
+ *
  * Menu-button keyboard contract (WAI-ARIA): the button opens with Enter/Space or
  * either arrow and moves focus onto the checked row; inside, Up/Down wrap,
  * Home/End jump, Enter/Space choose, Esc closes and restores focus to the button,
@@ -41,6 +45,10 @@ export function createThemeToggle(bus: EventBus, theme: ThemeController): ThemeT
   );
 
   const heading = el('p', { class: 'gp-theme__heading', id: 'gp-theme-heading', text: 'Theme' });
+  const done = el('button', { class: 'gp-theme__done', type: 'button', text: 'Done' });
+  const top = el('div', { class: 'gp-theme__top' }, heading, done);
+  /* Only painted where the card is a sheet; on desktop it is display:none. */
+  const scrim = el('div', { class: 'gp-theme__scrim', hidden: true });
   const list = el('ul', { class: 'gp-theme__list', role: 'menu', 'aria-labelledby': 'gp-theme-heading' });
 
   const rows = THEMES.map((t) => {
@@ -68,8 +76,8 @@ export function createThemeToggle(bus: EventBus, theme: ThemeController): ThemeT
   });
   list.append(...rows);
 
-  const pop = el('div', { class: 'gp-theme__pop', hidden: true }, heading, list);
-  const element = el('div', { class: 'gp-theme' }, btn, pop);
+  const pop = el('div', { class: 'gp-theme__pop', hidden: true }, top, list);
+  const element = el('div', { class: 'gp-theme' }, btn, scrim, pop);
 
   const isOpen = (): boolean => !pop.hidden;
 
@@ -90,6 +98,7 @@ export function createThemeToggle(bus: EventBus, theme: ThemeController): ThemeT
   function open(): void {
     if (isOpen()) return;
     pop.hidden = false;
+    scrim.hidden = false;
     btn.setAttribute('aria-expanded', 'true');
     checkedRow().focus();
   }
@@ -97,6 +106,7 @@ export function createThemeToggle(bus: EventBus, theme: ThemeController): ThemeT
   function close(restoreFocus = true): void {
     if (!isOpen()) return;
     pop.hidden = true;
+    scrim.hidden = true;
     btn.setAttribute('aria-expanded', 'false');
     if (restoreFocus) btn.focus();
   }
@@ -136,6 +146,11 @@ export function createThemeToggle(bus: EventBus, theme: ThemeController): ThemeT
   for (const row of rows) {
     disposers.push(on(row, 'click', () => choose(row)));
   }
+
+  disposers.push(on(done, 'click', () => close()));
+  // The scrim lives inside .gp-theme, so the click-outside handler below does not
+  // see it as outside; it closes on its own.
+  disposers.push(on(scrim, 'pointerdown', () => close(false)));
 
   disposers.push(
     on(element, 'keydown', (ev) => {

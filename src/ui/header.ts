@@ -1,6 +1,12 @@
 /**
  * Header: brand mark + wordmark + tagline, and a typeahead country search
  * (ARIA combobox/listbox). Choosing a result emits ui:flyTo then globe:select.
+ *
+ * On a phone the search collapses to a single 44px button. A full-width field
+ * was buying a second header row — 50-odd px of globe — for the control a child
+ * is least likely to reach for first; tapping the button takes over the row
+ * (brand and theme toggle step aside) and Cancel/Escape gives it back.
+ * `data-searching` on the header is that state; app.css does the rest.
  */
 import type { EventBus } from '../core/events';
 import type { CountryRecord } from '../core/types';
@@ -86,10 +92,18 @@ export function renderHeader(container: HTMLElement, bus: EventBus, options: Hea
     enterkeyhint: 'go',
   });
   const listbox = el('ul', { class: 'gp-search__list', id: listId, role: 'listbox', hidden: true, 'aria-label': 'Matching countries' });
+  const toggle = el(
+    'button',
+    { class: 'gp-search__toggle', type: 'button', 'aria-label': 'Search countries', 'aria-expanded': 'false' },
+    svg(ICON_SEARCH, 'gp-search__toggle-icon'),
+  );
+  const cancel = el('button', { class: 'gp-search__cancel', type: 'button', text: 'Cancel' });
   const search = el(
     'div',
-    { class: 'gp-search' },
+    { class: 'gp-search', 'data-expanded': 'false' },
+    toggle,
     el('label', { class: 'gp-search__field' }, svg(ICON_SEARCH, 'gp-search__icon'), input),
+    cancel,
     listbox,
   );
 
@@ -101,6 +115,36 @@ export function renderHeader(container: HTMLElement, bus: EventBus, options: Hea
   disposers.push(() => themeToggle.dispose());
 
   container.append(brand, search, themeToggle.element);
+  container.dataset.searching = 'false';
+
+  // --- Collapsed search (phones) ---------------------------------------
+  // The field is display:none while collapsed, so focus() has to wait for the
+  // attribute to take effect; one frame is enough and costs nothing on desktop,
+  // where the toggle is display:none and none of this ever runs.
+  function setSearching(on: boolean): void {
+    search.dataset.expanded = String(on);
+    container.dataset.searching = String(on);
+    toggle.setAttribute('aria-expanded', String(on));
+  }
+
+  function expandSearch(): void {
+    if (search.dataset.expanded === 'true') return;
+    setSearching(true);
+    input.focus();
+    if (document.activeElement !== input) requestAnimationFrame(() => input.focus());
+  }
+
+  /** Collapsing always clears: a query you cannot see is worse than no query. */
+  function collapseSearch(): void {
+    if (search.dataset.expanded !== 'true') return;
+    closeList();
+    input.value = '';
+    setSearching(false);
+    if (document.activeElement === input) input.blur();
+  }
+
+  disposers.push(on(toggle, 'click', expandSearch));
+  disposers.push(on(cancel, 'click', collapseSearch));
 
   function openList(): void {
     listbox.hidden = false;
@@ -137,6 +181,7 @@ export function renderHeader(container: HTMLElement, bus: EventBus, options: Hea
     bus.emit('ui:flyTo', { iso3: entry.iso3 });
     bus.emit('globe:select', { iso3: entry.iso3 });
     input.blur();
+    collapseSearch();
   }
 
   function renderResults(): void {
@@ -218,6 +263,9 @@ export function renderHeader(container: HTMLElement, bus: EventBus, options: Hea
           } else if (input.value) {
             ev.stopPropagation();
             input.value = '';
+          } else {
+            ev.stopPropagation();
+            collapseSearch();
           }
           break;
         default:
@@ -227,9 +275,11 @@ export function renderHeader(container: HTMLElement, bus: EventBus, options: Hea
   );
   disposers.push(
     on(input, 'blur', () => {
-      // Delay so a pointerdown on an option wins.
+      // Delay so a pointerdown on an option — or on Cancel — wins.
       setTimeout(() => {
-        if (document.activeElement !== input) closeList();
+        if (document.activeElement === input) return;
+        closeList();
+        if (!search.contains(document.activeElement)) collapseSearch();
       }, 120);
     }),
   );
@@ -258,6 +308,7 @@ export function renderHeader(container: HTMLElement, bus: EventBus, options: Hea
       disposers.forEach((off) => off());
       clear(container);
       container.classList.remove('gp-header');
+      delete container.dataset.searching;
     },
   };
 }

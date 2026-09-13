@@ -244,6 +244,7 @@ button {
 
 /* ---------- Header --------------------------------------------------- */
 .gp-header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -314,6 +315,40 @@ button {
 }
 .gp-search__icon {
   flex: none;
+}
+/* Collapsed-search controls: phones only (see the @media block). */
+.gp-search__toggle,
+.gp-search__cancel {
+  display: none;
+}
+.gp-search__toggle {
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1.5px solid var(--gp-ink-faint);
+  border-radius: 50%;
+  background: var(--gp-card);
+  color: var(--gp-ink-2);
+  cursor: pointer;
+  box-shadow: inset 0 1px 2px rgba(var(--gp-shadow-rgb), 0.06), 0 1px 0 var(--gp-ink-faint);
+}
+.gp-search__toggle:active {
+  background: var(--gp-chip-hover);
+}
+.gp-search__cancel {
+  align-items: center;
+  flex: none;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--gp-blue-ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+.gp-search__cancel:active {
+  color: var(--gp-accent-ink);
 }
 .gp-search__input {
   flex: 1;
@@ -466,6 +501,30 @@ button {
   border-left: 1px dashed var(--gp-tape-edge);
   border-right: 1px dashed var(--gp-tape-edge);
   pointer-events: none;
+}
+.gp-theme__scrim {
+  display: none;
+}
+.gp-theme__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.gp-theme__done {
+  display: none;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--gp-blue-ink);
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+.gp-theme__done:active {
+  color: var(--gp-accent-ink);
 }
 .gp-theme__heading {
   margin: 0 0 6px;
@@ -640,6 +699,12 @@ button {
 .gp-loading.is-visible {
   opacity: 1;
   pointer-events: auto;
+}
+/* An author `display` outranks the UA's [hidden], so without this the dismissed
+   overlay stays laid out over the whole stage — and if the show/hide race leaves
+   `is-visible` on it, it silently eats every tap on the globe. */
+.gp-loading[hidden] {
+  display: none;
 }
 .gp-loading__card {
   display: flex;
@@ -1470,7 +1535,10 @@ button {
 
 @media (max-width: 720px) {
   :root {
-    --gp-margin-x: 40px;
+    /* The red margin rule is a paper conceit, not a layout: at 40px it plus the
+       header's own indent spent 13% of a 390px screen on empty left edge. The
+       line still reads as a margin at 22. */
+    --gp-margin-x: 22px;
     --gp-gutter: 10px;
   }
   .gp-header {
@@ -1480,6 +1548,12 @@ button {
        the control someone reaches for when the theme is not what they expected. */
     padding: calc(7px + var(--gp-safe-t)) calc(14px + var(--gp-safe-r)) 6px
       calc(var(--gp-margin-x) + 10px + var(--gp-safe-l));
+  }
+  /* While the search has the row, the brand and the toggle step aside rather
+     than the header growing a second row. */
+  .gp-header[data-searching='true'] .gp-brand,
+  .gp-header[data-searching='true'] .gp-theme {
+    display: none;
   }
   .gp-brand {
     min-height: 44px;
@@ -1494,19 +1568,41 @@ button {
   .gp-brand__tagline {
     display: none;
   }
+  /* Collapsed: one 44px button beside the theme toggle. Expanded: it takes the
+     row. Either way the header is one row, not two. */
   .gp-search {
-    width: 100%;
-    order: 3;
+    width: auto;
+    flex: none;
+    order: 2;
+    margin-left: auto;
   }
-  /* 48, not 44: the field's border eats into the input, and this is the control
-     a child mis-taps most. */
-  .gp-search__field {
+  .gp-search[data-expanded='true'] {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .gp-search__toggle {
+    display: grid;
+  }
+  .gp-search[data-expanded='true'] .gp-search__toggle,
+  .gp-search[data-expanded='false'] .gp-search__field,
+  .gp-search[data-expanded='false'] .gp-search__cancel {
+    display: none;
+  }
+  .gp-search[data-expanded='true'] .gp-search__field {
+    flex: 1 1 auto;
+    min-width: 0;
+    /* 48, not 44: the field's border eats into the input, and this is the
+       control a child mis-taps most. */
     height: 48px;
   }
-  /* The header wraps here and the search takes the whole second row; keep the
-     toggle on the first row, opposite the brand, instead of below the search. */
+  .gp-search[data-expanded='true'] .gp-search__cancel {
+    display: inline-flex;
+  }
   .gp-theme {
-    order: 2;
+    order: 3;
   }
   /* The theme toggle is the control you reach for when the theme is not what you
      expected, so it is the last one that should be small or crowd the edge. */
@@ -1531,7 +1627,7 @@ button {
     max-height: min(70dvh, 440px);
     border-radius: 14px;
     border-top: 1px solid var(--gp-ink-faint);
-    padding: 12px 10px calc(10px + var(--gp-safe-b));
+    padding: 4px 10px calc(10px + var(--gp-safe-b));
   }
   .gp-theme__pop::before {
     /* tape only reads as tape when the card is pinned under its button */
@@ -1539,6 +1635,23 @@ button {
   }
   .gp-theme__heading {
     font-size: 14px;
+    margin: 0;
+    padding: 0 8px;
+  }
+  .gp-theme__done {
+    display: inline-flex;
+  }
+  /* Every row costs a map re-raster, so make the picker a thing you enter and
+     leave on purpose rather than something a stray tap lands in. */
+  /* :not([hidden]) because a bare .class rule outranks the UA's [hidden] and
+     would leave an invisible sheet of glass over the whole page. */
+  .gp-theme__scrim:not([hidden]) {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 44;
+    background: color-mix(in srgb, rgba(var(--gp-shadow-rgb), 0.45) 60%, rgba(0, 0, 0, 0.45));
+    backdrop-filter: blur(2px);
   }
 
   .gp-footer {
@@ -1839,6 +1952,19 @@ button {
   }
   .gp-theme__pop::before {
     display: none;
+  }
+  .gp-theme__done {
+    display: inline-flex;
+  }
+  /* :not([hidden]) because a bare .class rule outranks the UA's [hidden] and
+     would leave an invisible sheet of glass over the whole page. */
+  .gp-theme__scrim:not([hidden]) {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 44;
+    background: color-mix(in srgb, rgba(var(--gp-shadow-rgb), 0.45) 60%, rgba(0, 0, 0, 0.45));
+    backdrop-filter: blur(2px);
   }
   .gp-theme__blurb {
     display: none;

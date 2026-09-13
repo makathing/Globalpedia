@@ -17,15 +17,24 @@ export function createLoading(stage: HTMLElement): LoadingHandle {
   );
   stage.append(box);
   let timer = 0;
+  let frame = 0;
 
   return {
     set(on, text) {
       window.clearTimeout(timer);
+      // Cancel the pending reveal too: a set(true) immediately followed by
+      // set(false) used to let the queued frame re-add `is-visible` after the
+      // removal, leaving a dismissed overlay claiming pointer events.
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
       if (text) message.textContent = text;
       if (on) {
         box.hidden = false;
         // next frame so the transition runs
-        requestAnimationFrame(() => box.classList.add('is-visible'));
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          box.classList.add('is-visible');
+        });
       } else {
         box.classList.remove('is-visible');
         timer = window.setTimeout(() => {
@@ -35,6 +44,7 @@ export function createLoading(stage: HTMLElement): LoadingHandle {
     },
     dispose() {
       window.clearTimeout(timer);
+      if (frame) cancelAnimationFrame(frame);
       box.remove();
     },
   };
