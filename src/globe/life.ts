@@ -32,6 +32,7 @@ import {
   ClampToEdgeWrapping,
   Color,
   DoubleSide,
+  DynamicDrawUsage,
   Group,
   InstancedBufferAttribute,
   InstancedMesh,
@@ -61,8 +62,20 @@ export interface LifeOptions {
 export interface LifeHandle {
   /** Add this to the same parent as the sphere. */
   group: Object3D;
-  /** Advance the simulation. Returns true if anything visibly changed (drives the render loop). */
-  update(dt: number, cameraDistance: number): boolean;
+  /**
+   * Advance the simulation. Returns true if anything visibly changed (drives the render loop).
+   *
+   * @param cameraDistance distance in reference units — what the pose *looks* like — so the
+   *        discovery ramp means the same thing on a phone as it does on a desk.
+   * @param eye the camera's position in this layer's own frame. Supply it and everything below
+   *        the horizon is skipped outright; leave it out and every creature is stepped.
+   */
+  update(dt: number, cameraDistance: number, eye?: Vector3): boolean;
+  /**
+   * What the last simulated frame actually did: how many of `total` creatures were stepped
+   * (the rest were below the horizon) and how many instances the dirty ranges uploaded.
+   */
+  readonly stats: { stepped: number; uploaded: number; total: number };
   restyle(theme: GlobeTheme): void;
   setEnabled(on: boolean): void;
   dispose(): void;
@@ -76,6 +89,8 @@ export interface LifeHandle {
  * opaque sphere occludes the far hemisphere for free — no per-instance facing test needed.
  */
 const LIFE_RADIUS = 1.0035;
+/** The map sphere's radius. The creatures ride a hair above it; see LIFE_RADIUS. */
+const SPHERE_RADIUS = 1;
 
 /**
  * World size of the quad, as a fraction of the globe radius. The drawing itself only fills
@@ -87,8 +102,37 @@ const LIFE_RADIUS = 1.0035;
 const BASE_SCALE = 0.0052;
 
 /**
- * The discovery ramp, in camera distance from the view target. `DEFAULT_DISTANCE` is 3.9 and
- * `MIN_DISTANCE` is 1.6, so the default pose still sits hard at zero: the globe is lifeless
+ * Slack on the horizon test, as a dot product. A creature is a quad, not a point, so its far
+ * corner clears the limb slightly before its centre does; four times the quad's own world size
+ * is far more than that ever needs and costs nothing.
+ */
+const HORIZON_MARGIN = 4 * BASE_SCALE;
+
+/**
+ * The dot product, between a creature's outward unit vector and the direction of the eye, below
+ * which the opaque sphere has already hidden it.
+ *
+ * Tangent lines from an eye at distance D touch a sphere of radius R where p·v = R²/D. A point
+ * a little further out, at radius r, meets the same tangent cone a little earlier, at
+ * R²/D − k(D² − R²)/D with k = √((r² − R²)/(D² − R²)). Everything below that line is behind the
+ * limb and is already being discarded by the depth test — so stepping it and rewriting its
+ * matrix is pure waste. At the distances the creatures are visible at (D ≈ 1.5…3.7 from the
+ * globe's centre) this is 0.19…0.56, which is 60–78% of them, not the half a plain hemisphere
+ * test would find.
+ */
+function horizonDot(eyeDistance: number): number {
+  const R2 = SPHERE_RADIUS * SPHERE_RADIUS;
+  const span = eyeDistance * eyeDistance - R2;
+  if (span <= 1e-6) return -1; // eye inside the globe: nothing is occluded
+  const k = Math.sqrt(Math.max(0, LIFE_RADIUS * LIFE_RADIUS - R2) / span);
+  return R2 / eyeDistance - (k * span) / eyeDistance - HORIZON_MARGIN;
+}
+
+/**
+ * The discovery ramp, in *reference* camera distance — what the pose looks like, not how far
+ * the camera actually is, so a portrait phone (which opens much further back to fit the globe
+ * to its width) discovers life at the same apparent size a desk does. `DEFAULT_DISTANCE` is 3.9
+ * and `MIN_DISTANCE` is 1.6, so the default pose still sits hard at zero: the globe is lifeless
  * until the viewer leans in, which is the point.
  *
  * But the ramp used to start at 3.15 and only fill in at 2.15 — two thirds of the way to the
@@ -1027,6 +1071,24 @@ export function createLife(idMap: IdMap, theme: GlobeTheme, opts: LifeOptions = 
 
   /* -- mesh ------------------------------------------------------------------------------- */
 
+  /**
+   * Index order is geographical, not categorical.
+   *
+   * Built in the obvious order — every ship, then every fish, then every animal — the creatures
+   * that are facing the viewer at any moment are scattered the whole length of the instance
+   * buffer, and the dirty range covering the ones that moved is then the whole buffer. Sorting
+   * by longitude makes the near side a mostly-contiguous window of indices, because the visible
+   * cap *is* a band of longitudes for any pose that has not been rolled onto a pole. It changes
+   * nothing that is drawn: everything downstream (the atlas cell, the per-creature ink, the
+   * matrices) is written out of this same array afterwards.
+   */
+  const sortLng = (c: Creature): number => {
+    if (!c.legs) return c.homeLng;
+    const a = c.legs[c.leg].a;
+    return Math.atan2(-a.z, a.x) / DEG; // see math.ts: +X is the prime meridian, -Z is 90°E
+  };
+  creatures.sort((a, b) => sortLng(a) - sortLng(b));
+
   const n = creatures.length;
   const geometry = new PlaneGeometry(1, 1);
   const texture = new CanvasTexture(buildAtlas());
@@ -1064,6 +1126,8 @@ export function createLife(idMap: IdMap, theme: GlobeTheme, opts: LifeOptions = 
 
   const mesh = new InstancedMesh(geometry, material, n);
   mesh.frustumCulled = false; // one draw call whose instances cover the whole sphere
+  // Rewritten every animated frame, and in pieces — tell the driver so.
+  mesh.instanceMatrix.setUsage(DynamicDrawUsage);
   mesh.renderOrder = 8; // under the labels, over the map
 
   const cells = new Float32Array(n * 4);
@@ -1290,14 +1354,91 @@ export function createLife(idMap: IdMap, theme: GlobeTheme, opts: LifeOptions = 
     c.heading += Math.PI * (0.7 + 0.6 * ((c.phase * 0.31) % 1));
   }
 
+  /* -- dirty ranges ----------------------------------------------------------------------- */
+
+  /**
+   * Upload only the instances that were rewritten.
+   *
+   * A frame that moves the near hemisphere touches roughly a quarter to a third of the buffer,
+   * and re-sending all 950 matrices (59 kB) to say so is most of what a creature-only frame
+   * costs on the bus. `writeMatrix` reports each index it writes; consecutive indices collapse
+   * into a run, and the runs are then coalesced down to at most MAX_RANGES by closing the
+   * smallest gaps first — a handful of `bufferSubData` calls covering a little more than was
+   * actually written beats hundreds covering exactly it.
+   */
+  const MAX_RANGES = 4;
+  const runStart = new Int32Array(n + 1);
+  const runEnd = new Int32Array(n + 1);
+  let runCount = 0;
+
+  function markWritten(i: number): void {
+    if (runCount > 0 && runEnd[runCount - 1] === i - 1) runEnd[runCount - 1] = i;
+    else {
+      runStart[runCount] = i;
+      runEnd[runCount] = i;
+      runCount++;
+    }
+  }
+
+  /**
+   * An attribute is only uploaded when the object carrying it is drawn, so a partial range
+   * written while the layer was hidden would never reach the GPU and would then be dropped by
+   * the next flush. Any frame where the layer comes back sends the whole buffer instead.
+   */
+  let fullUploadPending = true;
+
+  /** Hand the runs to the attribute, merged down to MAX_RANGES. Returns instances covered. */
+  function flushRanges(): number {
+    const attr = mesh.instanceMatrix;
+    attr.clearUpdateRanges();
+    if (fullUploadPending) {
+      fullUploadPending = false;
+      runCount = 0;
+      attr.needsUpdate = true; // no ranges at all: three uploads the lot
+      return n;
+    }
+    if (runCount === 0) return 0;
+    // Keep the MAX_RANGES-1 widest gaps as splits; everything else merges. One pass, no sort:
+    // the list of candidate splits is never longer than three.
+    const splitAt: number[] = [];
+    const splitGap: number[] = [];
+    for (let r = 1; r < runCount; r++) {
+      const gap = runStart[r] - runEnd[r - 1] - 1;
+      let at = splitGap.length;
+      while (at > 0 && splitGap[at - 1] < gap) at--;
+      if (at < MAX_RANGES - 1) {
+        splitGap.splice(at, 0, gap);
+        splitAt.splice(at, 0, r);
+        if (splitGap.length > MAX_RANGES - 1) {
+          splitGap.pop();
+          splitAt.pop();
+        }
+      }
+    }
+    splitAt.sort((a, b) => a - b);
+    let covered = 0;
+    let from = 0;
+    for (let s = 0; s <= splitAt.length; s++) {
+      const to = s < splitAt.length ? splitAt[s] - 1 : runCount - 1;
+      const count = runEnd[to] - runStart[from] + 1;
+      attr.addUpdateRange(runStart[from] * 16, count * 16);
+      covered += count;
+      from = to + 1;
+    }
+    attr.needsUpdate = true;
+    runCount = 0;
+    return covered;
+  }
+
   // Everyone is on station before the first frame: ships snapped onto their leg, every matrix
   // written once. Nothing here depends on `update` ever being called.
   for (let i = 0; i < n; i++) {
     const c = creatures[i];
     if (c.legs) placeShip(c);
     writeMatrix(i, c);
+    markWritten(i);
   }
-  mesh.instanceMatrix.needsUpdate = true;
+  flushRanges();
 
   /* -- driving ---------------------------------------------------------------------------- */
 
@@ -1305,7 +1446,11 @@ export function createLife(idMap: IdMap, theme: GlobeTheme, opts: LifeOptions = 
   let opacity = 0;
   let disposed = false;
 
-  function update(dt: number, cameraDistance: number): boolean {
+  /** Instances rewritten and instances uploaded on the last stepping frame. Diagnostics only. */
+  let lastStepped = 0;
+  let lastUploaded = 0;
+
+  function update(dt: number, cameraDistance: number, eye?: Vector3): boolean {
     if (disposed || !enabled) return false;
 
     const want = 1 - smoothstep(FADE_NEAR, FADE_FAR, cameraDistance);
@@ -1318,6 +1463,7 @@ export function createLife(idMap: IdMap, theme: GlobeTheme, opts: LifeOptions = 
     const visible = want > ALPHA_EPSILON;
     if (mesh.visible !== visible) {
       mesh.visible = visible;
+      if (visible) fullUploadPending = true;
       changed = true;
     }
     // Out of range: nothing is on screen, so nothing moves and the host can go back to sleep.
@@ -1327,19 +1473,43 @@ export function createLife(idMap: IdMap, theme: GlobeTheme, opts: LifeOptions = 
 
     const step = dt > maxStep ? maxStep : dt;
     if (step <= 0) return changed;
+
+    // Everything past the limb is already being thrown away by the depth test against the
+    // opaque sphere. Stepping it and rewriting its matrix buys nothing, so it is skipped
+    // outright: same 950 creatures, same behaviour where anyone can see it.
+    const eyeLen = eye ? eye.length() : 0;
+    const cut = eyeLen > 0 ? horizonDot(eyeLen) : -2;
+    const vx = eyeLen > 0 ? eye!.x / eyeLen : 0;
+    const vy = eyeLen > 0 ? eye!.y / eyeLen : 0;
+    const vz = eyeLen > 0 ? eye!.z / eyeLen : 0;
+
+    let stepped = 0;
     for (let i = 0; i < n; i++) {
       const c = creatures[i];
+      if (cut > -1) {
+        // The creature's outward unit vector, dotted with the eye — see math.ts for the frame.
+        const cl = Math.cos(c.lat * DEG);
+        const lam = c.lng * DEG;
+        const facing = cl * Math.cos(lam) * vx + Math.sin(c.lat * DEG) * vy - cl * Math.sin(lam) * vz;
+        if (facing < cut) continue;
+      }
       if (c.legs) stepShip(c, step);
       else stepWanderer(c, step);
       writeMatrix(i, c);
+      markWritten(i);
+      stepped++;
     }
-    mesh.instanceMatrix.needsUpdate = true;
+    lastStepped = stepped;
+    lastUploaded = flushRanges();
     return true;
   }
 
   return {
     group,
     update,
+    get stats() {
+      return { stepped: lastStepped, uploaded: lastUploaded, total: n };
+    },
     restyle(next) {
       parseInk(next.labelInk, inkColor);
       haloAlpha = parseInk(next.labelHalo, haloColor);

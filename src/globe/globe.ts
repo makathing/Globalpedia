@@ -46,7 +46,7 @@ import {
   type Object3D,
 } from 'three';
 import type { GlobeTheme } from '../core/themes';
-import { DEG, TILT } from './math';
+import { clamp, DEG, TILT } from './math';
 import { applySurfaceMaterial } from './surface';
 
 export const GLOBE_RADIUS = 1;
@@ -65,8 +65,17 @@ export const AXIS = new Vector3(Math.sin(TILT), Math.cos(TILT), 0);
  * framing leaves room for the base underneath.
  */
 export const VIEW_TARGET = AXIS.clone().multiplyScalar(-0.2);
-/** Default camera distance from VIEW_TARGET. */
+/**
+ * Reference camera distance from VIEW_TARGET: the distance the globe has always opened at on a
+ * screen at least as wide as it is tall. It is no longer used raw — `fitDistance` derives the
+ * actual opening distance from it and the viewport — but it is still the number the framing,
+ * the zoom range and the life layer's discovery ramp are all quoted against.
+ */
 export const DEFAULT_DISTANCE = 3.9;
+
+/** Vertical field of view, degrees. The horizontal one is this one stretched by the aspect. */
+export const FOV = 38;
+const TAN_HALF_FOV = Math.tan((FOV * Math.PI) / 360);
 
 /**
  * Elevation of the fixed viewpoint above the globe's equatorial plane, measured at the spin
@@ -95,6 +104,52 @@ export const FACING_POINT = (() => {
   const world = VIEW_TARGET.clone().addScaledVector(VIEW_DIR, t);
   return world.applyAxisAngle(new Vector3(0, 0, 1), TILT).normalize();
 })();
+
+/**
+ * Framing: fit the *smaller* axis, whichever that is.
+ * ---------------------------------------------------
+ * Only `camera.aspect` used to react to the viewport, and a perspective camera's aspect widens
+ * the horizontal field while leaving the vertical one alone. So a 38° vertical FOV at a fixed
+ * distance always framed the globe to 79% of the *height* — fine on a desk, and on a 390×844
+ * phone it put the globe at 1.42× the viewport width with both limbs off the screen and the
+ * cradle's north finial jammed into the top edge.
+ *
+ * The distance is now derived: the globe fills the same fraction of the tighter half-field at
+ * every shape of screen. The fraction is not a new constant — it is read back out of the pose
+ * the globe has always opened in, so a landscape screen is framed to the pixel as before and a
+ * portrait one simply pulls back far enough to bring the width in to the same margin.
+ */
+
+/** How much of the tighter half-field the globe's silhouette fills, at distance `d`. */
+function fillAt(d: number, tanHalf: number): number {
+  // A sphere of radius R at distance D from the eye projects to R / sqrt(D² − R²) in tan units.
+  const D = VIEW_TARGET.clone().addScaledVector(VIEW_DIR, d).length();
+  return GLOBE_RADIUS / Math.sqrt(D * D - GLOBE_RADIUS * GLOBE_RADIUS) / tanHalf;
+}
+
+/** The inverse: how far back the camera must sit for the globe to fill `fill` of that half-field. */
+function distanceForFill(tanHalf: number, fill: number): number {
+  const t = Math.max(1e-4, fill * tanHalf);
+  const D = GLOBE_RADIUS * Math.sqrt(1 + 1 / (t * t)); // eye → globe centre
+  // The camera slides along VIEW_DIR from VIEW_TARGET, which is not the globe's centre, so turn
+  // that eye distance back into a distance along the ray: |VIEW_TARGET + VIEW_DIR·d| = D.
+  const b = VIEW_TARGET.dot(VIEW_DIR);
+  return -b + Math.sqrt(b * b + D * D - VIEW_TARGET.lengthSq());
+}
+
+/**
+ * The fraction of the tighter half-field the globe fills. Derived, not chosen: it is exactly
+ * what DEFAULT_DISTANCE already produces vertically.
+ */
+export const FRAMING_FILL = fillAt(DEFAULT_DISTANCE, TAN_HALF_FOV);
+
+/**
+ * Opening distance for a viewport of this aspect. At aspect ≥ 1 the vertical field is the
+ * tighter one and this returns DEFAULT_DISTANCE to the last bit; below 1 it pulls back.
+ */
+export function fitDistance(aspect: number): number {
+  return distanceForFill(TAN_HALF_FOV * Math.min(1, aspect), FRAMING_FILL);
+}
 
 /**
  * The spin, about the globe's own axis, that brings `lng` onto the camera's meridian. A point
@@ -129,6 +184,21 @@ export interface GlobeScene {
   ambientLight: AmbientLight;
   /** Resize renderer + camera to the container's current box. */
   resize(): void;
+  /** The aspect the camera is currently set up for (canvas width ÷ height). */
+  readonly aspect: number;
+  /**
+   * Raise what the camera centres on by `fraction` of the canvas height, so a bottom sheet
+   * covering the lower part of the screen does not sit on top of the country `flyTo` just
+   * brought round. It is an off-centre projection, not a move: the camera keeps its pose and
+   * its view ray, the whole cradle rises with the globe and stays upright, and `FACING_POINT`
+   * — the point `flyTo` aims at — is still the point on the view ray. 0 clears it.
+   */
+  setViewOffset(fraction: number): void;
+  /**
+   * Trade resolution for fill rate while the picture is moving. `true` halves the device pixel
+   * ratio (never below 1); `false` restores it. See globe/index.ts for when it is used.
+   */
+  setAnimating(on: boolean): void;
   dispose(): void;
 }
 
@@ -228,7 +298,7 @@ export function createGlobeScene(
   // Fixed pose, set once. `camera.up` stays world +Y, which is where STAND_UP lands, so the
   // base is upright on screen without a roll. Only `position` moves after this, and only
   // along VIEW_DIR.
-  const camera = new PerspectiveCamera(38, 1, 0.1, 50);
+  const camera = new PerspectiveCamera(FOV, 1, 0.1, 50);
   camera.position.copy(VIEW_TARGET).addScaledVector(VIEW_DIR, DEFAULT_DISTANCE);
   camera.lookAt(VIEW_TARGET);
 
@@ -262,13 +332,45 @@ export function createGlobeScene(
   const ambientLight = new AmbientLight(0xffffff, theme.ambient);
   scene.add(ambientLight);
 
+  // --- sizing -----------------------------------------------------------------------------
+  let width = 0;
+  let height = 0;
+  let viewOffset = 0;
+  let animating = false;
+
+  /** The ratio the still picture is drawn at. */
+  function fullPixelRatio(): number {
+    return Math.min(window.devicePixelRatio || 1, 2);
+  }
+  /**
+   * While the picture is moving, draw it at half the linear resolution — a quarter of the
+   * fragments — but never below 1, where the saving stops being worth the softness. On a DPR-2
+   * phone this is the single largest cost taken out of an animating frame.
+   */
+  function wantedPixelRatio(): number {
+    const full = fullPixelRatio();
+    return animating ? Math.max(1, full * 0.5) : full;
+  }
+
+  function applyProjection(): void {
+    if (viewOffset !== 0) camera.setViewOffset(width, height, 0, viewOffset * height, width, height);
+    else camera.clearViewOffset();
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  }
+
   function resize(): void {
     const w = Math.max(1, container.clientWidth);
     const h = Math.max(1, container.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const ratio = wantedPixelRatio();
+    // A ResizeObserver on a `dvh` container fires on every address-bar nudge, and every
+    // setSize reallocates the drawing buffer. Do nothing when nothing actually changed.
+    if (w === width && h === height && ratio === renderer.getPixelRatio()) return;
+    width = w;
+    height = h;
+    renderer.setPixelRatio(ratio);
     renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
+    applyProjection();
   }
   resize();
 
@@ -300,6 +402,21 @@ export function createGlobeScene(
     hemiLight,
     ambientLight,
     resize,
+    get aspect() {
+      return width / height;
+    },
+    setViewOffset(fraction) {
+      const f = Number.isFinite(fraction) ? clamp(fraction, -0.5, 0.5) : 0;
+      if (f === viewOffset) return;
+      viewOffset = f;
+      applyProjection();
+    },
+    setAnimating(on) {
+      if (on === animating) return;
+      animating = on;
+      // setPixelRatio re-sizes the drawing buffer itself, so this is the whole change.
+      renderer.setPixelRatio(wantedPixelRatio());
+    },
     dispose,
   };
 }

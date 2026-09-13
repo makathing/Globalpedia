@@ -27,10 +27,24 @@
  * auto-rotate that yields to input, to a selection and to `prefers-reduced-motion`.
  */
 import { Quaternion, Vector3, type Object3D, type PerspectiveCamera } from 'three';
+import { DEFAULT_DISTANCE } from './globe';
 import { clamp } from './math';
 
+/**
+ * The zoom range, quoted against `DEFAULT_DISTANCE` — i.e. against the pose a screen at least
+ * as wide as it is tall opens in. A portrait screen opens further back (`fitDistance`), and
+ * `setFitScale` stretches these two with it, so the range is the same range in *apparent size*
+ * on every shape of screen: hard in, you see the same patch of the planet across the short
+ * side of the viewport that you always did, and hard out is the same 15% step back.
+ * They are only distances in the abstract; what the viewer feels is the ratio to the default.
+ */
 export const MIN_DISTANCE = 1.6;
 export const MAX_DISTANCE = 4.5;
+/**
+ * Past this much finger travel a touch is a drag, not a tap with slop on it — and a viewer who
+ * has dragged has taken the globe over, so a later resize must not re-frame it underneath them.
+ */
+const TAKEOVER_PX = 8;
 /** How long after the user lets go / the panel closes before auto-rotate resumes. */
 export const RESUME_DELAY_MS = 6000;
 
@@ -60,6 +74,22 @@ export interface GlobeControls {
   readonly interacting: boolean;
   /** Camera distance from the view target. */
   readonly distance: number;
+  /** The framing stretch currently applied to the default distance and the zoom range. */
+  readonly fitScale: number;
+  /**
+   * Distance as a multiple of the reference pose, i.e. the distance this framing *looks* like
+   * on a landscape screen. Anything keyed to apparent size (the life layer's discovery ramp)
+   * wants this and not the raw distance.
+   */
+  readonly relativeDistance: number;
+  /** Has the viewer zoomed or dragged? Once they have, the framing is theirs, not ours. */
+  readonly takenOver: boolean;
+  /**
+   * Re-frame for a new viewport: stretch the default distance and the zoom range by `scale`.
+   * The camera itself only follows while the viewer has not taken over and is sitting at the
+   * default — a resize must never pull the globe out from under a gesture or a chosen zoom.
+   */
+  setFitScale(scale: number): void;
   /** Advance damping / auto-rotate and place the camera. Returns true when anything moved. */
   update(deltaSeconds: number): boolean;
   /** User-level switch (also forced off by prefers-reduced-motion). */
@@ -108,7 +138,15 @@ export function createControls(o: ControlsOptions): GlobeControls {
     .crossVectors(SPIN_AXIS, o.viewDir.clone().applyQuaternion(toRig))
     .normalize();
 
-  let distance = clamp(o.camera.position.distanceTo(o.target), MIN_DISTANCE, MAX_DISTANCE);
+  /** Set by `setFitScale`; 1 is the reference (landscape) framing. */
+  let fitScale = 1;
+  let takenOver = false;
+  let dragTravel = 0;
+  const minD = (): number => MIN_DISTANCE * fitScale;
+  const maxD = (): number => MAX_DISTANCE * fitScale;
+  const homeD = (): number => DEFAULT_DISTANCE * fitScale;
+
+  let distance = clamp(o.camera.position.distanceTo(o.target), minD(), maxD());
   let wanted = o.autoRotate && !reducedMotion;
   let selected = false;
   let suspended = false;
@@ -157,22 +195,31 @@ export function createControls(o: ControlsOptions): GlobeControls {
   function dragToRadians(px: number): number {
     const h = Math.max(1, o.dom.clientHeight);
     // Close in, the visible patch is small: slow the drag so a swipe moves ~the same on-screen distance.
-    const speed = 0.22 + 0.78 * clamp((distance - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE), 0, 1);
+    const speed = 0.22 + 0.78 * clamp((distance - minD()) / (maxD() - minD()), 0, 1);
     return (2 * Math.PI * px * speed) / h;
   }
 
   function dolly(scale: number): void {
-    distance = clamp(distance * scale, MIN_DISTANCE, MAX_DISTANCE);
+    distance = clamp(distance * scale, minD(), maxD());
+    takenOver = true;
   }
 
   const onPointerDown = (e: PointerEvent): void => {
     if (pointers.size === 0) {
       interacting = true;
+      dragTravel = 0;
       window.clearTimeout(resumeTimer);
     }
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 2) pinch = pinchSpan();
-    o.dom.setPointerCapture?.(e.pointerId);
+    // Throws if the pointer is already gone (a fast tap, a cancelled gesture, a synthesised
+    // event). Capture is an optimisation — losing it costs a drag that ends at the canvas edge,
+    // not the drag itself — so it must never take the handler down with it.
+    try {
+      o.dom.setPointerCapture?.(e.pointerId);
+    } catch {
+      /* no active pointer with that id */
+    }
   };
 
   function pinchSpan(): number {
@@ -192,6 +239,8 @@ export function createControls(o: ControlsOptions): GlobeControls {
       // Both signs match the camera-orbiting controls this replaced.
       pendingSpin += dragToRadians(dx);
       pendingTilt += dragToRadians(dy);
+      dragTravel += Math.abs(dx) + Math.abs(dy);
+      if (dragTravel > TAKEOVER_PX) takenOver = true;
     } else if (pointers.size === 2) {
       const span = pinchSpan();
       if (pinch > 0 && span > 0) dolly(1 / Math.pow(span / pinch, ZOOM_SPEED));
@@ -249,6 +298,26 @@ export function createControls(o: ControlsOptions): GlobeControls {
     get distance() {
       return distance;
     },
+    get fitScale() {
+      return fitScale;
+    },
+    get relativeDistance() {
+      return distance / fitScale;
+    },
+    get takenOver() {
+      return takenOver;
+    },
+    setFitScale(scale) {
+      const next = scale > 0 && Number.isFinite(scale) ? scale : 1;
+      if (next === fitScale) return;
+      // Follow the new framing only from the pose we put the viewer in ourselves. Once they
+      // have zoomed or dragged, or while a finger is still down, the camera stays where it is
+      // and only the range around it moves.
+      const atHome = Math.abs(distance - homeD()) < 1e-6;
+      fitScale = next;
+      if (atHome && !takenOver && !interacting) distance = homeD();
+      distance = clamp(distance, minD(), maxD());
+    },
     update,
     setAutoRotate(on) {
       wanted = on && !reducedMotion;
@@ -259,7 +328,8 @@ export function createControls(o: ControlsOptions): GlobeControls {
     },
     suspend,
     setDistance(d) {
-      distance = clamp(d, MIN_DISTANCE, MAX_DISTANCE);
+      // flyTo drives this, so it is not a takeover: the framing is still ours to re-fit.
+      distance = clamp(d, minD(), maxD());
     },
     flush() {
       rotate(pendingSpin, pendingTilt);

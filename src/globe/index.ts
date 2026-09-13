@@ -12,8 +12,16 @@ import type { Topology } from 'topojson-specification';
 import type { EventBus } from '../core/events';
 import { DEFAULT_THEME, themeById, type GlobeTheme, type ThemeId } from '../core/themes';
 import type { CountryRecord } from '../core/types';
-import { createControls, MAX_DISTANCE, MIN_DISTANCE } from './controls';
-import { createGlobeScene, FACING_POINT, spinForLongitude, VIEW_DIR, VIEW_TARGET } from './globe';
+import { createControls } from './controls';
+import {
+  createGlobeScene,
+  DEFAULT_DISTANCE,
+  FACING_POINT,
+  fitDistance,
+  spinForLongitude,
+  VIEW_DIR,
+  VIEW_TARGET,
+} from './globe';
 import { createHighlightLayer } from './highlight';
 import { createLife } from './life';
 import { clamp, easeInOutCubic, latLngToVector3 } from './math';
@@ -40,6 +48,21 @@ export interface GlobeHandle {
   setAutoRotate(on: boolean): void;
   /** Re-fit to the container. Called automatically via ResizeObserver; exposed for manual layouts. */
   resize(): void;
+  /**
+   * Raise the point a `flyTo` centres a country on by `fraction` of the globe canvas's height,
+   * so a bottom sheet does not cover the country that was just brought round. Pass 0 to clear
+   * it. It is an off-centre projection, so the globe *and its cradle* rise together and the
+   * stand stays planted and upright; nothing about the camera's pose, the pick ray or the
+   * flight maths changes.
+   *
+   * It is taken literally and not clamped to keep the globe on screen, because only the caller
+   * knows what is covering it. How far it can usefully go is (the gap between the canvas top
+   * and the globe's own top edge) ÷ the canvas height: at 390×844 with the current chrome the
+   * globe is 309 px across with 166 px of headroom in a 689 px canvas, so ~0.24 puts its top on
+   * the canvas edge and ~0.18 centres it in the band a 62%-tall bottom sheet leaves. Hard limit
+   * ±0.5.
+   */
+  setViewOffset(fraction: number): void;
   dispose(): void;
 }
 
@@ -51,7 +74,28 @@ const THEME_SETTLE_MS = 120;
 
 /** Countries smaller than this (km²) get a closer camera on flyTo. */
 const SMALL_COUNTRY_AREA = 50_000;
+/** In reference units, like every other distance here — scaled by the framing when used. */
 const SMALL_COUNTRY_DISTANCE = 2.1;
+
+/**
+ * Pacing the redraw.
+ *
+ * The render loop already sleeps when nothing moves. The case it had no answer for is the one
+ * the creatures create: something is moving, all the time, and it is ant-sized. Redrawing the
+ * whole scene sixty times a second so a schooner can cross four pixels an hour is the largest
+ * avoidable cost on a phone, and `life.update` itself is only ~0.6 ms of it — the cost is the
+ * draw. So a frame in which *only* the creature layer moved is paced, and everything the
+ * viewer does — drag, pinch, wheel, flight, hover, theme — is exempt and redraws at once.
+ */
+const ANIM_FPS_FINE = 30;
+const ANIM_FPS_COARSE = 22;
+/**
+ * How long after the last animated frame the full pixel ratio comes back. Long enough that the
+ * end of a flick or the last creature step does not flip resolution twice; short enough that
+ * the picture anyone stops to study has sharpened before they have focused on it. The change
+ * is a resolution pop, so it wants to happen while the eye is still settling, not later.
+ */
+const RESTORE_FULL_RES_MS = 200;
 
 interface Flight {
   start: number;
@@ -201,8 +245,9 @@ export function createGlobe(
     levelUp(to);
     const fromDist = ctl.distance;
     let toDist = fromDist;
-    if ((rec.area ?? Infinity) < SMALL_COUNTRY_AREA) toDist = Math.min(fromDist, SMALL_COUNTRY_DISTANCE);
-    toDist = clamp(toDist, MIN_DISTANCE, MAX_DISTANCE);
+    if ((rec.area ?? Infinity) < SMALL_COUNTRY_AREA) {
+      toDist = Math.min(fromDist, SMALL_COUNTRY_DISTANCE * ctl.fitScale);
+    }
     ctl.suspend();
     needsRender = true;
     return new Promise<void>((resolve) => {
@@ -286,22 +331,59 @@ export function createGlobe(
   }
 
   // --- render loop ----------------------------------------------------------------------------
+  const animIntervalMs = 1000 / (coarsePointer ? ANIM_FPS_COARSE : ANIM_FPS_FINE);
+  /** The camera's position in the life layer's own frame, for its horizon test. */
+  const eyeLocal = new Vector3();
+  const spinWorld = new Quaternion();
+  let lastRenderAt = 0;
+  let lastAnimatedAt = 0;
+  let lifeAnimating = false;
+  let lowRes = false;
+  /** Time the creatures have banked while their frames were being paced out. */
+  let lifeDt = 0;
+
   function frame(now: number): void {
     rafId = requestAnimationFrame(frame);
     const dt = Math.min(0.1, (now - lastTime) / 1000);
     lastTime = now;
     let moved = stepFlight(now);
     if (ctl.update(dt)) moved = true;
+    lifeDt += dt;
+
+    // Creature-only frames are paced; anything the viewer caused is not. The test is made
+    // before `life.update` runs, so a paced-out frame costs nothing at all — no stepping, no
+    // matrix writes, no upload — and the time it banks is handed over on the frame that lands.
+    if (!moved && !needsRender && lifeAnimating && now - lastRenderAt < animIntervalMs) return;
+
     // Life drives its own frames only while it is close enough to be seen; when it
     // returns false the loop goes back to sleep exactly as before.
-    if (life.update(dt, ctl.distance)) moved = true;
+    globeSpin.getWorldQuaternion(spinWorld);
+    eyeLocal.copy(camera.position).applyQuaternion(spinWorld.invert());
+    lifeAnimating = life.update(lifeDt, ctl.relativeDistance, eyeLocal);
+    lifeDt = 0;
+    if (lifeAnimating) moved = true;
+
+    // Trade resolution for fill rate, but only while the creatures are actually running: the
+    // globe at rest — including under the barely-perceptible idle spin — is always drawn at
+    // full ratio, because that is the picture someone stops and studies. Keying it to the
+    // creature layer rather than to "is anything moving" also means the drawing buffer is
+    // reallocated once when the viewer leans in and once when they lean back out, instead of
+    // twice per drag.
+    if (lifeAnimating) lastAnimatedAt = now;
+    if (lifeAnimating !== lowRes && (lifeAnimating || now - lastAnimatedAt >= RESTORE_FULL_RES_MS)) {
+      lowRes = lifeAnimating;
+      gs.setAnimating(lowRes);
+      needsRender = true; // redraw once at the new ratio
+    }
     if (!moved && !needsRender) return;
+
     // The sphere moves now, not the camera, so picking needs fresh world matrices before it
     // raycasts — and the camera is outside the scene graph, so it updates separately.
     scene.updateMatrixWorld();
     camera.updateMatrixWorld();
     if (moved) picking.refresh();
     renderer.render(scene, camera);
+    lastRenderAt = now;
     needsRender = false;
   }
   function start(): void {
@@ -322,11 +404,26 @@ export function createGlobe(
   };
   document.addEventListener('visibilitychange', onVisibility);
 
-  const observer = new ResizeObserver(() => {
+  /**
+   * Re-fit to the container: size the renderer, then re-derive the opening distance from the
+   * new aspect. `setFitScale` decides for itself whether the camera is allowed to follow — it
+   * is not, once the viewer has zoomed or dragged, or while a finger is still down.
+   */
+  function refit(): void {
+    if (disposed) return; // the orientation re-check below can outlive the globe
     gs.resize();
+    ctl.setFitScale(fitDistance(gs.aspect) / DEFAULT_DISTANCE);
     needsRender = true;
-  });
+  }
+  const observer = new ResizeObserver(refit);
   observer.observe(container);
+  // A phone rotated in the hand resizes the container, so the observer covers it; iOS has been
+  // known to fire the orientation change before the layout settles, so take the second look.
+  const onOrientation = (): void => {
+    refit();
+    window.setTimeout(refit, 250);
+  };
+  window.addEventListener('orientationchange', onOrientation);
 
   // --- bus wiring -----------------------------------------------------------------------------
   const offs = [
@@ -339,6 +436,9 @@ export function createGlobe(
   ];
 
   // --- initial view ---------------------------------------------------------------------------
+  // Frame before the first paint: on a portrait phone the opening distance is not the
+  // reference one, and a flyTo below reads the distance it lands at from the controls.
+  refit();
   if (opts.initialIso3 && countries[opts.initialIso3]) {
     void flyTo(opts.initialIso3, { duration: 0 });
   } else {
@@ -353,8 +453,9 @@ export function createGlobe(
     flyTo,
     setSelected,
     setAutoRotate: (on) => ctl.setAutoRotate(on),
-    resize() {
-      gs.resize();
+    resize: refit,
+    setViewOffset(fraction) {
+      gs.setViewOffset(fraction);
       needsRender = true;
     },
     dispose() {
@@ -364,6 +465,7 @@ export function createGlobe(
       if (flight) flight.resolve();
       flight = null;
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('orientationchange', onOrientation);
       clearTimeout(settleTimer);
       cancelRaster?.();
       observer.disconnect();

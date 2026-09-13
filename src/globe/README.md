@@ -17,7 +17,20 @@ const handle = createGlobe(container, worldTopology, countries, bus, { autoRotat
   `opts.theme` (a `ThemeId`; default `DEFAULT_THEME`).
 
 `GlobeHandle`: `flyTo(iso3, {duration?}) → Promise` (turns the *globe*, not the camera), `setSelected(iso3|null)`, `setAutoRotate(on)`,
-`resize()`, `dispose()`. The default export is `createGlobe`.
+`resize()`, `setViewOffset(fraction)`, `dispose()`. The default export is `createGlobe`.
+
+`setViewOffset(f)` raises what the camera centres on by `f` of the canvas height, for a bottom
+sheet that would otherwise sit on the country `flyTo` just brought round. It is an off-centre
+projection (`camera.setViewOffset`), so the globe *and its cradle* rise together, the stand stays
+upright and planted, the pick ray follows, and nothing in the flight maths changes — `FACING_POINT`
+is still the point on the view ray. `0` clears it.
+
+It is taken literally rather than clamped to keep the globe on screen — only the caller knows what
+is covering it. The usable maximum is the globe's headroom inside the canvas over the canvas
+height: at 390×844 with the current chrome the globe is 309 px across with 166 px of headroom in a
+689 px canvas, so ~0.24 puts its top edge on the canvas edge and **~0.18 centres it in the band a
+62%-tall sheet leaves**. Verified: with the offset applied and `flyTo('BRA')` flown, a tap at 25%
+of the viewport height — inside that band — picks Brazil. Hard limit ±0.5.
 
 Bus contract: emits `globe:hover {iso3|null}` (on change) and `globe:select {iso3}` (tap, not drag);
 listens to `ui:flyTo {iso3}` (fly + highlight), `ui:close` (clear highlight, auto-rotate resumes after 6 s)
@@ -34,7 +47,9 @@ and `ui:theme {id}` (repaint in that theme).
 | `controls.ts` | drag → globe rotation (two axes, unclamped), wheel/pinch → dolly, zoom-scaled rotate speed, auto-rotate that yields to input/selection |
 | `label-layout.ts` | where each country name is printed: position, size from the country's own width, `1/cos(lat)` pre-stretch, collisions, leader lines |
 | `highlight.ts` | 2048×1024 transparent canvas on a 1.002-radius sphere: the wash, plus an underline beneath the printed name |
-| `picking.ts` | pointer → sphere UV → pick index; click = < 5 px & < 300 ms |
+| `picking.ts` | pointer → sphere UV → pick index; tap thresholds are per pointer type |
+| `id-map.ts` | the pick index itself: `lookupCountryId` (polygons) and `lookupId` (label ink first, then the 3×3 vote) |
+| `life.ts` | ~950 ships and animals in one InstancedMesh: placement against the id map, the wander, the horizon skip and the dirty-range upload |
 | `math.ts` | lat/lng ↔ sphere, projection, easing |
 
 ## Design decisions
@@ -64,6 +79,55 @@ and `ui:theme {id}` (repaint in that theme).
   One accepted liberty: the pins belong to the cradle, so after a roll they no longer point at the
   geographic poles. A sphere turning inside a thin ring reads naturally; chasing the poles with the
   cradle would put the furniture back in motion.
+- **The framing fits the smaller axis, and the distance is derived rather than chosen.** Only
+  `camera.aspect` used to react to the viewport, and aspect widens the *horizontal* field while
+  leaving the vertical one alone. A 38° vertical FOV at a fixed 3.9 therefore always framed the
+  globe to 79% of the **height** — right on a desk, and on a 390×844 phone it put the globe at
+  **1.42× the viewport width**, both limbs off the screen, the north finial and the polar cap
+  jammed into the top edge (which is what the stray "rings" at the top of the globe were).
+  `fitDistance(aspect)` now solves for the distance at which the globe fills the same fraction of
+  the **tighter** half-field. The fraction is not a second magic number: `FRAMING_FILL` is read
+  back out of the pose the globe has always opened in, so at aspect ≥ 1 `fitDistance` returns 3.9
+  to the last bit and a desktop is framed exactly as before, while a portrait phone simply pulls
+  back. Measured diameter ÷ the stage's short side: **0.793-0.794 at 390×844, 414×896, 360×780,
+  844×390 and 1440×900** — where before it was 0.79 of the *height* everywhere and 1.39-1.43 of
+  the width on a phone.
+  - **The zoom range travels with it.** `MIN_DISTANCE`/`MAX_DISTANCE` are quoted against
+    `DEFAULT_DISTANCE` and stretched by the same `fitScale`, so the range is the same range in
+    *apparent size* on every screen: hard in still shows the same patch of the planet across the
+    short side, hard out is still the same 15% step back. Everything else keyed to apparent size
+    travels too — the small-country flyTo distance, and the life layer's discovery ramp, which is
+    fed `ctl.relativeDistance` rather than the raw one.
+  - **A resize re-frames; a viewer's zoom is never overruled.** `setFitScale` only moves the
+    camera while the viewer has not zoomed or dragged (more than 8 px of travel) and is still
+    sitting at the default — otherwise the limits move around them and the camera stays put. So
+    an address-bar nudge, a rotation or a panel opening re-fits an untouched globe and cannot
+    yank one out from under a gesture. `resize()` itself does nothing at all when neither the box
+    nor the pixel ratio changed, which matters because a `dvh` container fires the ResizeObserver
+    on every toolbar movement and every `setSize` reallocates the drawing buffer.
+
+- **The far hemisphere is not simulated.** The sphere is opaque and drawn first, so the depth test
+  was already discarding everything behind the limb — after this module had stepped it and
+  rewritten its matrix. `update` now takes the eye in its own frame and skips anything below the
+  horizon, which is a tangency test, not a hemisphere test: tangents from an eye at distance D
+  touch the sphere at `p·v = R²/D`, and a creature at `LIFE_RADIUS` meets that cone a little
+  earlier still. At the distances creatures are visible at that is 60-78% of them, not half.
+  Measured at 4096 index columns: **0.82 ms → 0.31 ms** per `update`, 351 of 951 creatures
+  stepped, and a full geography audit of the instance matrices afterwards still finds 0 ships or
+  sea life ashore and 0 land animals at sea. The one liberty: a creature below the horizon is
+  frozen rather than stepped, so where it reappears depends a little on where the viewer has been
+  looking. Nothing anyone can see, and it only applies at all once the viewer has leaned in.
+
+- **Only the instances that moved are uploaded.** `writeMatrix` reports each index it writes;
+  consecutive indices collapse into runs, and the runs are coalesced down to at most four
+  `updateRanges` by closing the smallest gaps first. That only pays if the creatures facing the
+  viewer are *near each other in the buffer*, so the cast is sorted by longitude at build time —
+  the visible cap is a band of longitudes for any pose that has not been rolled onto a pole.
+  Measured: 351 creatures written, **449 of 951 instances uploaded** (28 kB instead of 59 kB).
+  One catch worth knowing: an attribute is only uploaded when the object carrying it is drawn, so
+  the first frame after the layer becomes visible again sends the whole buffer rather than a
+  range that would silently never arrive.
+
 - **Picking is pixel-exact, not geometric.** A 4096×2048 index (`Uint16Array`, 16 MB) is decoded from a
   flat-colour canvas; the blue channel is a checksum so anti-aliased border blends fail the lookup and fall
   back to a 3×3 neighbourhood vote instead of decoding as a wrong country. Stand meshes are never raycast.
@@ -131,8 +195,21 @@ and `ui:theme {id}` (repaint in that theme).
   landmass is 4.5° wide and its name is eleven letters, and at any larger size the layout had to relocate
   it — six degrees west, over the middle of France. 13 of 238 names now need a leader; all 195 sovereign
   states carry one. Territories are still allowed to drop, as they do on a real globe.
-- **Render on demand.** One rAF loop; `renderer.render` runs only when the camera moved, a flight/auto-rotate
-  is active, or hover/selection changed. The loop stops while the tab is hidden.
+- **Render on demand, and pace what is left.** One rAF loop; `renderer.render` runs only when the
+  camera moved, a flight/auto-rotate is active, or hover/selection changed. The loop stops while
+  the tab is hidden. What that had no answer for is the creature layer: once the viewer leans in,
+  *something* is moving all the time, and it is ant-sized. So a frame in which **only** the
+  creatures moved is capped at 30 fps (22 on a coarse pointer) and is drawn at half the device
+  pixel ratio — never below 1 — with the full ratio restored 200 ms after the creatures stop.
+  Measured: `life.update` is only ~0.6-0.8 ms of such a frame; the cost is the draw, and at DPR 2
+  the resolution drop takes three quarters of the fragments out of it.
+  Two rules keep that from being felt. The pacing test is made **before** `life.update` runs and
+  is skipped entirely the moment anything else moves, so a paced-out frame costs nothing at all
+  and any drag, pinch, wheel, flight, hover or theme change redraws on the very next rAF.
+  And the resolution is keyed to the creatures alone, not to "is anything moving": the globe at
+  rest — including under the barely-perceptible idle spin — is always at full ratio, because that
+  is the picture someone stops and studies, and the drawing buffer is then reallocated once when
+  the viewer leans in and once when they lean back out rather than twice per drag.
 - **The hover test is throttled, but the last move is never dropped.** The pointer's final position is the
   one that matters and it is exactly the one most likely to be discarded: a quick flick off the globe
   delivers a burst of moves, the last of which lands inside the 33 ms window. The hover then stayed on a
@@ -148,6 +225,16 @@ and `ui:theme {id}` (repaint in that theme).
   and never again — every theme's palette is 8 long, so each country keeps its colour *slot*, and the names
   are baked, so a switch just re-inks the same words in the same places.
   Nothing in a switch touches the camera, so an in-flight `flyTo` is undisturbed.
+- **A finger is not a mouse, and the tap thresholds now say so.** 5 px / 300 ms is exactly right
+  for a mouse: past that the user was dragging. It is wrong for a finger by roughly a factor of
+  three. Both platforms put touch slop at 8-10 px before they will even call a gesture a scroll, a
+  fingertip covers 40-plus pixels of glass so its reported centre wanders as the pad flattens and
+  lifts, and a child aiming at a country the size of a fingernail *presses deliberately* — well
+  past 300 ms. Held to the mouse's numbers, the headline interaction of the whole app did nothing
+  on a phone about half the time, with no feedback to say why. It is now 16 px / 900 ms for touch,
+  8 px / 500 ms for a pen, and unchanged for a mouse. A second finger cancels the tap outright, so
+  a pinch is never a selection, and so does `pointercancel`.
+
 - **Textures.** 8192×4096 sRGB canvas texture with max anisotropy. Renderer has `alpha: true` so the page
   background shows.
 - **The surface is what stops it looking like vector art.** A flat roughness with no bump map returns light
