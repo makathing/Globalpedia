@@ -6,8 +6,10 @@
  *  ui:flyTo      – UI asks the globe to rotate to a country (search, neighbour chip)
  *  ui:close      – the info panel closed (globe may resume auto-rotate)
  *  data:ready    – country data has loaded
+ *  ui:theme      – the viewer picked a theme; the globe repaints itself
  */
 import type { CountryRecord } from './types';
+import type { ThemeId } from './themes';
 
 export interface EventMap {
   'globe:select': { iso3: string };
@@ -15,6 +17,7 @@ export interface EventMap {
   'ui:flyTo': { iso3: string };
   'ui:close': Record<string, never>;
   'data:ready': { countries: Record<string, CountryRecord> };
+  'ui:theme': { id: ThemeId };
 }
 
 export type EventName = keyof EventMap;

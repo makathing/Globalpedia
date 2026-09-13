@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/3d-globe-website-plan-nnji0m]
   workflow_dispatch:
 
 permissions:
@@ -26,6 +26,9 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      # Pages must be switched on once by a repository admin
+      # (Settings -> Pages -> Source: GitHub Actions). The workflow token is not
+      # permitted to create the Pages site itself.
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

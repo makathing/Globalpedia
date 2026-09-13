@@ -8,6 +8,34 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23bfe3f5' stroke='%233b2f2a' stroke-width='2'/%3E%3Cpath d='M8 12c4-3 8 1 12-1M6 20c5 2 10-2 16 1' fill='none' stroke='%233b2f2a' stroke-width='1.5'/%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://en.wikipedia.org" crossorigin />
     <link rel="preconnect" href="https://upload.wikimedia.org" crossorigin />
+    <script>
+      /* Apply the saved theme before first paint so there is no flash of the default.
+         Only the paper color and color-scheme are set here; src/ui/theme.ts applies the
+         full token set from src/core/themes.ts once the module loads. Keep the ids and
+         paper colors below in sync with that table. */
+      (function () {
+        var PAPER = {
+          classroom: '#fbf8f1',
+          chalkboard: '#2a3733',
+          atlas: '#e8dcc0',
+          blueprint: '#12243f',
+          fieldnotes: '#eef3e6',
+          nightstudy: '#171d2b'
+        };
+        var DARK = { chalkboard: 1, blueprint: 1, nightstudy: 1 };
+        var id = null;
+        try { id = localStorage.getItem('gp:theme'); } catch (e) { /* privacy mode */ }
+        if (!id || !PAPER[id]) {
+          id = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)
+            ? 'nightstudy' : 'classroom';
+        }
+        var r = document.documentElement;
+        r.setAttribute('data-theme', id);
+        r.style.setProperty('--gp-paper', PAPER[id]);
+        r.style.setProperty('color-scheme', DARK[id] ? 'dark' : 'light');
+        r.style.backgroundColor = PAPER[id];
+      })();
+    </script>
   </head>
   <body>
     <div id="app">
