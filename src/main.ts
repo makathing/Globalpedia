@@ -50,7 +50,7 @@ async function boot(): Promise<void> {
     // The pre-paint script in index.html has already resolved and stamped the theme,
     // so boot the globe in it rather than in the default and re-theming a frame later.
     const stamped = document.documentElement.dataset.theme;
-    globe = createGlobe($('globe'), data.world, countries, bus, {
+    globe = await createGlobe($('globe'), data.world, countries, bus, {
       autoRotate: true,
       initialIso3: countries[initial] ? initial : undefined,
       theme: isThemeId(stamped) ? stamped : undefined,
@@ -88,6 +88,17 @@ async function boot(): Promise<void> {
 
     history.replaceState(null, '', `#${iso3}`);
   });
+
+  /**
+   * Lift the globe so the country you just chose is not flown underneath the sheet.
+   *
+   * The sheet reports how much of the stage it covers; half of that is how far the centre
+   * of the remaining band sits above the centre of the stage, which is exactly the shift
+   * the camera needs. Capped below the point where the globe's top would leave the canvas,
+   * so the full detent — where the globe is hidden anyway — cannot push it off screen.
+   */
+  const MAX_LIFT = 0.22;
+  ui.onSheetCoverage((coverage) => globe?.setViewOffset(Math.min(coverage / 2, MAX_LIFT)));
 
   bus.on('ui:close', () => {
     imageAbort?.abort();
