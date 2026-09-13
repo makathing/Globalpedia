@@ -20,6 +20,23 @@ export interface UIHandle {
   /** Show fallback tiles for the strip. */
   setImagesFailed(iso3: string): void;
   close(): void;
+  /**
+   * 0–1: how much of #stage the bottom sheet covers right now (0 on desktop and
+   * whenever the panel is closed). #globe fills #stage, so this is also a
+   * fraction of the globe canvas's height — the unit `setViewOffset` takes.
+   * The camera owner wants it so a fly-to can aim above the sheet instead of
+   * behind it:
+   *
+   *   ui.onSheetCoverage((c) => globe.setViewOffset(Math.min(c / 2, LIMIT)));
+   *
+   * Half the coverage, because that is how far the centre of the *visible* strip
+   * of stage sits above the centre of the whole stage. It is not clamped here:
+   * only the camera knows how far the globe can rise before it leaves the canvas.
+   * Peek covers ~0.48 and full ~0.88, so read it, do not hard-code it.
+   */
+  sheetCoverage(): number;
+  /** Subscribe to that number; fires once immediately, then on every settled change. */
+  onSheetCoverage(listener: (coverage: number) => void): () => void;
   /** For search + neighbour names (also auto-called on data:ready). */
   setCountries(countries: Record<string, CountryRecord>): void;
   /** Global "Inflating the globe…" overlay. */
@@ -47,7 +64,7 @@ export function createUI(root: UIRoot, bus: EventBus): UIHandle {
   // Built before the header so the picker can read the theme already applied.
   const theme = createThemeController(bus);
   const header = renderHeader(root.header, bus, { theme });
-  const panel = renderPanel(root.panel, bus, { getCountries, onNavigate: navigate });
+  const panel = renderPanel(root.panel, bus, { getCountries, onNavigate: navigate, stage: root.stage });
   const disposeFooter = renderFooter(root.footer);
   const tooltip = createTooltip(root.stage, bus, getCountries);
   const hint = createHint(root.stage, bus);
@@ -73,6 +90,8 @@ export function createUI(root: UIRoot, bus: EventBus): UIHandle {
     setImages: (iso3, images) => panel.setImages(iso3, images),
     setImagesFailed: (iso3) => panel.setImagesFailed(iso3),
     close: () => panel.close(),
+    sheetCoverage: () => panel.sheetCoverage(),
+    onSheetCoverage: (listener) => panel.onSheetCoverage(listener),
     setCountries: applyCountries,
     setLoading: (on, message) => loading.set(on, message),
     dispose() {

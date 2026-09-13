@@ -1,13 +1,31 @@
 /**
- * Info panel: index-card slide-in (desktop) / bottom sheet (mobile).
+ * Info panel: index-card slide-in (desktop) / bottom sheet (phone).
  * Shows flag + names, 5-slot photo strip, facts grid, article sections.
  * The panel never fetches; main.ts pushes data through showCountry/setImages.
+ *
+ * The sheet is a real two-detent sheet: `peek` (identity + a glimpse, the globe
+ * keeps the majority of the stage) and `full` (reading height). It can be
+ * dragged between them and flung down to dismiss, the grabber is a button so the
+ * same thing works from a keyboard, and a tap on the globe outside it closes it.
+ * Heights are percentages of #stage, not of the viewport, because the stage is
+ * what the sheet actually shares with the globe — 62dvh left 106px of globe on a
+ * 390x670 Safari window.
+ *
+ * Whoever owns the camera needs to know how much of the stage is covered so a
+ * fly-to can aim above the sheet: `sheetCoverage()` / `onSheetCoverage()` report
+ * it. `GlobeHandle.setViewOffset()` takes a fraction of the canvas height, and
+ * the geometric ideal is `coverage / 2` — half, because that is how far the
+ * centre of the *visible* band sits above the centre of the whole stage. The
+ * globe agent's own note says the useful range runs out at about 0.24 on a
+ * 390x844 phone, so the caller clamps; the UI's job is only to say, honestly,
+ * how much is covered. Peek is ~0.48 and full ~0.88, so nothing should hard-code
+ * a number read off one detent.
  */
 import type { EventBus } from '../core/events';
 import type { CountryImage, CountryRecord } from '../core/types';
 import { el, clear, svg, on, append, prefersReducedMotion, type Child } from './dom';
 import { formatArea, formatPopulation, formatInt, joinList, paragraphs, wikipediaUrl } from './format';
-import { ICON_CAMERA, ICON_CLOSE, ICON_EXTERNAL } from './icons';
+import { ICON_CAMERA, ICON_CHEVRON_UP, ICON_CLOSE, ICON_EXTERNAL } from './icons';
 import { createLightbox } from './lightbox';
 
 export interface PanelHandle {
@@ -17,6 +35,10 @@ export interface PanelHandle {
   close(): void;
   isOpen(): boolean;
   currentIso3(): string | null;
+  /** 0–1: how much of #stage the bottom sheet covers right now (0 when closed or on desktop). */
+  sheetCoverage(): number;
+  /** Fires whenever that number settles (open, close, detent, rotate). Returns an unsubscribe. */
+  onSheetCoverage(listener: (coverage: number) => void): () => void;
   dispose(): void;
 }
 
@@ -25,14 +47,34 @@ export interface PanelOptions {
   getCountries: () => Record<string, CountryRecord>;
   /** Called when the user picks a neighbour chip. */
   onNavigate: (iso3: string) => void;
+  /** The panel's positioning context; also what a tap-outside listens on. */
+  stage: HTMLElement;
 }
 
 const SLOT_COUNT = 5;
 const ANIM_MS = 240;
 
+/**
+ * The sheet layout is live exactly when this matches — keep it in step with the
+ * matching @media block in app.css. Short viewports are excluded on purpose: a
+ * phone in landscape has no room for a sheet and gets the side card instead.
+ */
+const SHEET_QUERY = '(max-width: 720px) and (min-height: 481px)';
+
+type Detent = 'peek' | 'full';
+
+/** Past this much downward travel from `peek`, the release dismisses instead of settling. */
+const DISMISS_RATIO = 0.45;
+/** px per ms. A flick faster than this decides the detent on its own, wherever it was released. */
+const FLING = 0.55;
+/** A press that never travels further than this and ends quickly counts as a tap. */
+const TAP_SLOP = 10;
+const TAP_MS = 400;
+
 export function renderPanel(container: HTMLElement, bus: EventBus, options: PanelOptions): PanelHandle {
   container.classList.add('gp-panel');
   container.dataset.open = 'false';
+  container.dataset.detent = 'peek';
   // We announce through our own status region; the raw panel content would be too chatty.
   container.removeAttribute('aria-live');
   container.setAttribute('aria-hidden', 'true');
@@ -57,7 +99,6 @@ export function renderPanel(container: HTMLElement, bus: EventBus, options: Pane
   const head = el(
     'header',
     { class: 'gp-panel__head' },
-    el('div', { class: 'gp-panel__handle', 'aria-hidden': 'true' }),
     closeBtn,
     el(
       'div',
@@ -65,6 +106,20 @@ export function renderPanel(container: HTMLElement, bus: EventBus, options: Pane
       el('div', { class: 'gp-panel__flagbox' }, flagImg),
       el('div', { class: 'gp-panel__names' }, title, official, tagline, pron),
     ),
+  );
+
+  // The grabber lives outside the scroller so a drag on it never fights the
+  // article's own scrolling, and it is a button so "expand" is not gesture-only.
+  const grip = el(
+    'button',
+    {
+      class: 'gp-panel__grip',
+      type: 'button',
+      'aria-label': 'Expand details',
+      'aria-expanded': 'false',
+      'aria-controls': 'gp-panel-scroll',
+    },
+    el('span', { class: 'gp-panel__handle', 'aria-hidden': 'true' }),
   );
 
   const strip = el('div', { class: 'gp-strip', role: 'list', 'aria-label': 'Photos' });
@@ -80,11 +135,31 @@ export function renderPanel(container: HTMLElement, bus: EventBus, options: Pane
     article,
   );
 
+  const scroll = el('div', { class: 'gp-card__scroll', id: 'gp-panel-scroll' }, head, body);
+
+  // Sheet-only: the close control the desktop card puts in its top-right corner is
+  // 500-odd px up from the bottom of a phone. This bar is the same button where a
+  // thumb already is, and it carries the home-indicator inset for the whole sheet.
+  const dismiss = el(
+    'button',
+    { class: 'gp-panel__dismiss', type: 'button' },
+    svg(ICON_CLOSE, 'gp-panel__dismiss-icon'),
+    el('span', { text: 'Close' }),
+  );
+  const expand = el(
+    'button',
+    { class: 'gp-panel__expand', type: 'button', 'aria-label': 'Expand details', 'aria-controls': 'gp-panel-scroll' },
+    svg(ICON_CHEVRON_UP, 'gp-panel__expand-icon'),
+  );
+  const foot = el('div', { class: 'gp-panel__foot' }, expand, dismiss);
+
   const card = el(
     'article',
     { class: 'gp-card', 'aria-labelledby': 'gp-panel-title' },
     el('div', { class: 'gp-card__tape', 'aria-hidden': 'true' }),
-    el('div', { class: 'gp-card__scroll' }, head, body),
+    grip,
+    scroll,
+    foot,
   );
   container.append(card, status);
 
@@ -178,8 +253,10 @@ export function renderPanel(container: HTMLElement, bus: EventBus, options: Pane
           el(
             'a',
             { class: 'gp-readmore__link', href: wikipediaUrl(record.wikipediaTitle), target: '_blank', rel: 'noopener noreferrer' },
-            `Read more about ${record.name} on Wikipedia `,
-            svg(ICON_EXTERNAL),
+            // The label and the icon are one flex row, so a wrap breaks between
+            // words instead of flinging the icon to the far end of the next line.
+            el('span', { class: 'gp-readmore__label', text: `Read more about ${record.name} on Wikipedia` }),
+            svg(ICON_EXTERNAL, 'gp-readmore__icon'),
           ),
         ),
       );
@@ -251,6 +328,207 @@ export function renderPanel(container: HTMLElement, bus: EventBus, options: Pane
     return container.dataset.open === 'true';
   }
 
+  // --- The sheet -------------------------------------------------------
+  const sheetMedia = typeof matchMedia === 'function' ? matchMedia(SHEET_QUERY) : null;
+  const isSheet = (): boolean => (sheetMedia ? sheetMedia.matches : false);
+
+  /** The detent a new country opens at. Peek, until the reader asks for more. */
+  let preferred: Detent = 'peek';
+  let detent: Detent = 'peek';
+  const coverageListeners = new Set<(coverage: number) => void>();
+  let lastCoverage = -1;
+
+  /** Settled coverage — the drag's intermediate positions are not worth a camera move. */
+  function sheetCoverage(): number {
+    if (!isSheet() || !isOpen()) return 0;
+    const stageH = options.stage.clientHeight;
+    if (!stageH) return 0;
+    return Math.min(1, container.offsetHeight / stageH);
+  }
+
+  function notifyCoverage(): void {
+    const value = sheetCoverage();
+    if (Math.abs(value - lastCoverage) < 0.005) return;
+    lastCoverage = value;
+    for (const listener of coverageListeners) listener(value);
+  }
+
+  function setDetent(next: Detent, remember = true): void {
+    detent = next;
+    container.dataset.detent = next;
+    if (remember) preferred = next;
+    const label = next === 'full' ? 'Collapse details' : 'Expand details';
+    grip.setAttribute('aria-label', label);
+    grip.setAttribute('aria-expanded', String(next === 'full'));
+    expand.setAttribute('aria-label', label);
+    expand.classList.toggle('is-up', next === 'peek');
+    notifyCoverage();
+  }
+
+  /** Both detent heights in px. Costs two layouts, so only at the start of a drag. */
+  function detentHeights(): { peek: number; full: number } {
+    const before = container.dataset.detent;
+    container.dataset.detent = 'peek';
+    const peek = container.offsetHeight;
+    container.dataset.detent = 'full';
+    const full = container.offsetHeight;
+    if (before) container.dataset.detent = before;
+    return { peek, full };
+  }
+
+  interface Drag {
+    pointer: number;
+    /** Only a press that began on the grabber treats a no-move release as a toggle. */
+    fromGrip: boolean;
+    y0: number;
+    t0: number;
+    /** Offset that makes the full-height sheet look exactly as it did at drag start. */
+    base: number;
+    peek: number;
+    full: number;
+    y: number;
+    lastY: number;
+    lastT: number;
+    moved: boolean;
+    target: HTMLElement;
+  }
+  let drag: Drag | null = null;
+
+  function beginDrag(ev: PointerEvent): void {
+    if (!isSheet() || !isOpen() || drag) return;
+    // A press on a control inside the header is that control's, not the sheet's.
+    if ((ev.target as Element | null)?.closest('button, a')) {
+      if (ev.currentTarget !== grip) return;
+    }
+    const { peek, full } = detentHeights();
+    const base = detent === 'full' ? 0 : full - peek;
+    // Hold the sheet at full height for the whole gesture and move it with a
+    // transform: that is the only way a drag *up* can reveal content that the
+    // peek height had cropped, and it stays on the compositor.
+    container.classList.add('is-dragging');
+    container.dataset.detent = 'full';
+    container.style.transform = `translateY(${base}px)`;
+    const target = ev.currentTarget as HTMLElement;
+    drag = {
+      pointer: ev.pointerId,
+      fromGrip: target === grip,
+      y0: ev.clientY,
+      t0: ev.timeStamp,
+      base,
+      peek,
+      full,
+      y: base,
+      lastY: ev.clientY,
+      lastT: ev.timeStamp,
+      moved: false,
+      target,
+    };
+    try { target.setPointerCapture(ev.pointerId); } catch { /* the pointer is already gone */ }
+  }
+
+  function moveDrag(ev: PointerEvent): void {
+    if (!drag || ev.pointerId !== drag.pointer) return;
+    const dy = ev.clientY - drag.y0;
+    if (Math.abs(dy) > TAP_SLOP) drag.moved = true;
+    // Downwards is unbounded (it becomes a dismiss); upwards stops at full height
+    // with a little rubber so the sheet does not feel nailed down.
+    const raw = drag.base + dy;
+    drag.y = raw < 0 ? raw / 3 : raw;
+    container.style.transform = `translateY(${drag.y}px)`;
+    drag.lastY = ev.clientY;
+    drag.lastT = ev.timeStamp;
+  }
+
+  function endDrag(ev: PointerEvent): void {
+    if (!drag || ev.pointerId !== drag.pointer) return;
+    const d = drag;
+    drag = null;
+    try { d.target.releasePointerCapture(d.pointer); } catch { /* already released */ }
+    container.style.transform = '';
+    container.classList.remove('is-dragging');
+
+    const dt = Math.max(1, ev.timeStamp - d.lastT || ev.timeStamp - d.t0);
+    const velocity = (ev.clientY - d.lastY) / dt;
+    const peekY = d.full - d.peek;
+
+    if (!d.moved && ev.timeStamp - d.t0 < TAP_MS) {
+      // Tapping the grabber toggles; tapping the country's name does nothing,
+      // because a tap there is a tap on the content, not on a control.
+      if (d.fromGrip) setDetent(detent === 'full' ? 'peek' : 'full');
+      else setDetent(detent, false);
+      return;
+    }
+
+    let target: Detent | 'closed';
+    if (velocity > FLING) target = d.y > peekY * 0.5 ? 'closed' : 'peek';
+    else if (velocity < -FLING) target = 'full';
+    else if (d.y > peekY + d.peek * DISMISS_RATIO) target = 'closed';
+    else target = d.y > peekY / 2 ? 'peek' : 'full';
+
+    if (target === 'closed') {
+      // Leave the height where the gesture left it so the slide-out starts from
+      // under the thumb; the detent is put back when the sheet is finally hidden.
+      close();
+      return;
+    }
+    setDetent(target);
+  }
+
+  // The grabber and the sheet's own header are both grab areas: a 36px bar alone
+  // is a thin thing to find with a thumb.
+  for (const surface of [grip, head]) {
+    disposers.push(on(surface, 'pointerdown', beginDrag));
+    disposers.push(on(surface, 'pointermove', moveDrag));
+    disposers.push(on(surface, 'pointerup', endDrag));
+    disposers.push(on(surface, 'pointercancel', endDrag));
+  }
+  // Keyboard/AT: the grip is a button, and Enter/Space fire a click with no drag.
+  disposers.push(
+    on(grip, 'click', (ev) => {
+      if (ev.detail !== 0) return; // pointer taps are already handled by endDrag
+      setDetent(detent === 'full' ? 'peek' : 'full');
+    }),
+  );
+  disposers.push(on(expand, 'click', () => setDetent(detent === 'full' ? 'peek' : 'full')));
+
+  // Tap the globe to put the sheet away. Only a genuine tap that selected nothing:
+  // a drag is a spin, and a tap that hit a country has already opened that country.
+  let selectedAt = 0;
+  disposers.push(bus.on('globe:select', () => { selectedAt = performance.now(); }));
+  let outside: { x: number; y: number; t: number } | null = null;
+  disposers.push(
+    on(options.stage, 'pointerdown', (ev) => {
+      outside = !isSheet() || !isOpen() || container.contains(ev.target as Node) ? null : { x: ev.clientX, y: ev.clientY, t: performance.now() };
+    }, { capture: true }),
+  );
+  disposers.push(
+    on(options.stage, 'pointerup', (ev) => {
+      const start = outside;
+      outside = null;
+      if (!start || !isSheet() || !isOpen() || lightbox.isOpen()) return;
+      if (Math.abs(ev.clientX - start.x) > TAP_SLOP || Math.abs(ev.clientY - start.y) > TAP_SLOP) return;
+      const now = performance.now();
+      if (now - start.t > TAP_MS) return;
+      if (selectedAt >= start.t) return; // the tap landed on a country; it is opening, not closing
+      close();
+    }, { capture: true }),
+  );
+
+  const onViewportChange = (): void => {
+    if (!isSheet() && container.classList.contains('is-dragging')) {
+      container.classList.remove('is-dragging');
+      container.style.transform = '';
+      drag = null;
+    }
+    notifyCoverage();
+  };
+  if (sheetMedia?.addEventListener) {
+    sheetMedia.addEventListener('change', onViewportChange);
+    disposers.push(() => sheetMedia.removeEventListener('change', onViewportChange));
+  }
+  // resize covers rotation too: the visual viewport changes either way.
+  disposers.push(on(window, 'resize', onViewportChange));
+
   function show(record: CountryRecord): void {
     window.clearTimeout(hideTimer);
     const sameCountry = current?.iso3 === record.iso3;
@@ -277,14 +555,17 @@ export function renderPanel(container: HTMLElement, bus: EventBus, options: Pane
 
     if (!wasOpen) {
       previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      // A fresh country arrives at the detent this reader last settled on.
+      setDetent(preferred, false);
       container.hidden = false;
       container.removeAttribute('aria-hidden');
       // force a frame so the transition plays from the closed state
       void container.offsetWidth;
       container.dataset.open = 'true';
+      notifyCoverage();
     }
     if (!sameCountry) {
-      card.querySelector<HTMLElement>('.gp-card__scroll')?.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+      scroll.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
     }
     focusTitle();
     status.textContent = `Showing ${record.name}`;
@@ -304,13 +585,17 @@ export function renderPanel(container: HTMLElement, bus: EventBus, options: Pane
     if (!isOpen()) return;
     container.dataset.open = 'false';
     container.setAttribute('aria-hidden', 'true');
+    notifyCoverage();
     const restore = previousFocus;
     previousFocus = null;
     if (restore && restore.isConnected && !container.contains(restore)) restore.focus({ preventScroll: true });
     else if (document.activeElement && container.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
     const delay = prefersReducedMotion() ? 0 : ANIM_MS;
     hideTimer = window.setTimeout(() => {
-      if (!isOpen()) container.hidden = true;
+      if (!isOpen()) {
+        container.hidden = true;
+        setDetent(preferred, false);
+      }
     }, delay);
     bus.emit('ui:close', {});
   }
@@ -329,11 +614,13 @@ export function renderPanel(container: HTMLElement, bus: EventBus, options: Pane
 
   container.hidden = true;
   disposers.push(on(closeBtn, 'click', close));
+  disposers.push(on(dismiss, 'click', close));
   disposers.push(
     on(document, 'keydown', (ev) => {
       if (ev.key === 'Escape' && isOpen() && !lightbox.isOpen() && !ev.defaultPrevented) close();
     }),
   );
+  setDetent('peek', false);
 
   return {
     show,
@@ -342,13 +629,21 @@ export function renderPanel(container: HTMLElement, bus: EventBus, options: Pane
     close,
     isOpen,
     currentIso3: () => current?.iso3 ?? null,
+    sheetCoverage,
+    onSheetCoverage(listener) {
+      coverageListeners.add(listener);
+      listener(sheetCoverage());
+      return () => coverageListeners.delete(listener);
+    },
     dispose() {
       disposers.forEach((off) => off());
+      coverageListeners.clear();
       window.clearTimeout(hideTimer);
       lightbox.dispose();
       clear(container);
       container.classList.remove('gp-panel');
       delete container.dataset.open;
+      delete container.dataset.detent;
     },
   };
 }

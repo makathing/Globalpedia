@@ -1,6 +1,6 @@
 /** Stage overlays: the loading card and the first-use hint caption. */
 import type { EventBus } from '../core/events';
-import { el, svg } from './dom';
+import { el, svg, type Child } from './dom';
 import { GLOBE_SPINNER } from './icons';
 
 export interface LoadingHandle {
@@ -45,15 +45,18 @@ export interface HintHandle {
 }
 
 export function createHint(stage: HTMLElement, bus: EventBus): HintHandle {
-  const hint = el(
-    'p',
-    { class: 'gp-hint' },
-    el('span', { text: 'Drag to spin' }),
-    el('span', { class: 'gp-hint__dot', 'aria-hidden': 'true', text: '·' }),
-    el('span', { text: 'Scroll to zoom' }),
-    el('span', { class: 'gp-hint__dot', 'aria-hidden': 'true', text: '·' }),
-    el('span', { text: 'Tap a country name' }),
-  );
+  // "Scroll to zoom" is a lie on a phone, and so is "click". Ask the pointer.
+  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  const steps = coarse
+    ? ['Drag to spin', 'Pinch to zoom', 'Tap a country']
+    : ['Drag to spin', 'Scroll to zoom', 'Click a country name'];
+
+  const parts: Child[] = [];
+  steps.forEach((step, i) => {
+    if (i) parts.push(el('span', { class: 'gp-hint__dot', 'aria-hidden': 'true', text: '·' }));
+    parts.push(el('span', { class: 'gp-hint__step', text: step }));
+  });
+  const hint = el('p', { class: 'gp-hint' }, ...parts);
   stage.append(hint);
   let timer = 0;
 

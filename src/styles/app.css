@@ -94,6 +94,15 @@
   --gp-panel-w: min(420px, 40vw);
   --gp-gutter: 16px;
   --gp-radius: 10px;
+
+  /* Safe areas. index.html sets viewport-fit=cover, so the page now paints under
+     the notch, the home indicator and the Android gesture strip; every edge that
+     holds something tappable adds the matching inset below. The fallback keeps
+     these usable on browsers that do not know env(). */
+  --gp-safe-t: env(safe-area-inset-top, 0px);
+  --gp-safe-r: env(safe-area-inset-right, 0px);
+  --gp-safe-b: env(safe-area-inset-bottom, 0px);
+  --gp-safe-l: env(safe-area-inset-left, 0px);
 }
 
 /* ---------- Reset-ish ------------------------------------------------ */
@@ -106,6 +115,10 @@
 html {
   height: 100%;
   -webkit-text-size-adjust: 100%;
+  /* Nothing on this page scrolls the document, so any overscroll is either a
+     pull-to-refresh started from the header, the footer or the paper margin, or
+     the rubber-band that makes a fixed layout look broken. Contain both. */
+  overscroll-behavior: none;
 }
 
 body {
@@ -121,8 +134,24 @@ body {
   background-image: var(--gp-paper-image);
   background-attachment: fixed;
   overflow: hidden;
+  overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* The default is a cyan flash on every chip and button against cream paper.
+     Every control below carries its own :active state instead. */
+  -webkit-tap-highlight-color: transparent;
+  /* Chrome is not text. A slow press on the sheet's header used to pop the iOS
+     selection magnifier; the article opts back in just below. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* The parts that really are prose, and the input you type into. */
+.gp-panel__body,
+.gp-lightbox__info,
+input {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* paper grain: one fixed layer under the app, never over text */
@@ -219,7 +248,8 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 10px var(--gp-gutter) 8px calc(var(--gp-margin-x) + 12px);
+  padding: calc(10px + var(--gp-safe-t)) calc(var(--gp-gutter) + var(--gp-safe-r)) 8px
+    calc(var(--gp-margin-x) + 12px + var(--gp-safe-l));
   min-height: 64px;
 }
 
@@ -268,8 +298,8 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 42px;
-  padding: 0 12px 0 12px;
+  height: 44px;
+  padding: 0 14px;
   border-radius: 999px;
   background: var(--gp-card);
   border: 1.5px solid var(--gp-ink-faint);
@@ -377,8 +407,8 @@ button {
 .gp-theme__btn {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 1.5px solid var(--gp-ink-faint);
   border-radius: 50%;
@@ -415,6 +445,11 @@ button {
   border-top: 3px solid var(--gp-card-rule);
   border-radius: 4px 4px 12px 12px;
   box-shadow: var(--gp-card-shadow);
+  /* Six rows is 425px of card, which overflowed a phone in landscape and took
+     "Night Study" off-screen with no way to reach it — the body cannot scroll. */
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   /* the same faint card ruling the info panel uses */
   background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 27px, var(--gp-card-line) 27px, var(--gp-card-line) 28px);
 }
@@ -451,6 +486,7 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 44px;
   padding: 7px 8px;
   border-radius: 9px;
   cursor: pointer;
@@ -509,11 +545,12 @@ button {
 /* ---------- Footer --------------------------------------------------- */
 .gp-footer {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px 24px;
+  gap: 4px 24px;
   flex-wrap: wrap;
-  padding: 6px var(--gp-gutter) 8px calc(var(--gp-margin-x) + 12px);
+  padding: 4px calc(var(--gp-gutter) + var(--gp-safe-r)) calc(6px + var(--gp-safe-b))
+    calc(var(--gp-margin-x) + 12px + var(--gp-safe-l));
   font-size: 12.5px;
   color: var(--gp-ink-3);
   line-height: 1.4;
@@ -521,8 +558,22 @@ button {
 .gp-footer p {
   margin: 0;
 }
-.gp-footer a {
+.gp-footer__credits {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 6px;
+}
+.gp-footer__link {
+  display: inline-flex;
+  align-items: center;
   color: inherit;
+}
+.gp-footer__sep {
+  opacity: 0.6;
+}
+.gp-footer__licence {
+  opacity: 0.85;
 }
 .gp-footer__note {
   font-family: var(--gp-font-head);
@@ -535,7 +586,7 @@ button {
 .gp-hint {
   position: absolute;
   left: 50%;
-  bottom: 18px;
+  bottom: calc(18px + var(--gp-safe-b));
   z-index: 2;
   transform: translateX(-50%);
   margin: 0;
@@ -546,11 +597,26 @@ button {
   border: 1px solid var(--gp-ink-faint);
   color: var(--gp-ink-2);
   font-size: 13.5px;
-  white-space: nowrap;
   pointer-events: none;
-  display: inline-flex;
-  gap: 8px;
+  /* Each step stays whole and the pill wraps between them; letting the text
+     itself wrap shrink-wrapped the pill into three ragged columns on a phone. */
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  column-gap: 8px;
+  /* left:50% caps an auto-width absolute box at half the stage, which is what
+     shrink-wrapped the pill to 195px and broke it into three ragged columns. */
+  width: max-content;
+  max-width: min(
+    calc(100% - 2 * var(--gp-gutter) - var(--gp-safe-l) - var(--gp-safe-r)),
+    420px
+  );
+  text-align: center;
   transition: opacity 500ms var(--gp-ease), transform 500ms var(--gp-ease);
+}
+.gp-hint__step {
+  white-space: nowrap;
 }
 .gp-hint__dot {
   color: var(--gp-accent);
@@ -685,6 +751,10 @@ button {
 .gp-card {
   position: relative;
   height: 100%;
+  /* A column so the sheet's grabber and action bar can sit outside the scroller
+     (a drag on the grabber must never also scroll the article). */
+  display: flex;
+  flex-direction: column;
   border-radius: 6px;
   background: var(--gp-card);
   box-shadow: var(--gp-card-shadow);
@@ -719,7 +789,8 @@ button {
   pointer-events: none;
 }
 .gp-card__scroll {
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -736,8 +807,119 @@ button {
   border-bottom: 2px solid var(--gp-card-rule);
   box-shadow: 0 6px 12px -8px rgba(var(--gp-shadow-rgb), 0.28);
 }
-.gp-panel__handle {
+/* Text used to be sliced mid-glyph the instant it passed under the sticky head.
+   A short wash of card colour below the rule turns the cut into a fade. */
+.gp-panel__head::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 14px;
+  background: linear-gradient(to bottom, var(--gp-card), color-mix(in srgb, var(--gp-card) 0%, transparent));
+  pointer-events: none;
+}
+
+/* ---------- Sheet furniture (off on desktop, on in the @media below) ----- */
+.gp-panel__grip,
+.gp-panel__foot {
   display: none;
+}
+.gp-panel__grip {
+  flex: none;
+  width: 100%;
+  /* 44px of target; the negative margin gives back the 12px it does not need to
+     occupy, so the grabber is hittable without pushing the country's name down. */
+  padding: 19px 0 20px;
+  margin-bottom: -12px;
+  border: 0;
+  background: var(--gp-card);
+  border-radius: 18px 18px 0 0;
+  cursor: grab;
+  /* The drag is ours: without this the browser starts a scroll or a refresh. */
+  touch-action: none;
+}
+.gp-panel__grip:active {
+  cursor: grabbing;
+}
+.gp-panel__handle {
+  display: block;
+  width: 44px;
+  height: 5px;
+  margin: 0 auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--gp-ink) 22%, transparent);
+  transition: background var(--gp-dur) var(--gp-ease), width var(--gp-dur) var(--gp-ease);
+}
+.gp-panel__grip:active .gp-panel__handle {
+  background: color-mix(in srgb, var(--gp-ink) 42%, transparent);
+  width: 56px;
+}
+.gp-panel__foot {
+  position: relative;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  padding: 4px calc(14px + var(--gp-safe-r)) calc(4px + var(--gp-safe-b)) calc(14px + var(--gp-safe-l));
+  background: var(--gp-card);
+  border-top: 1px solid var(--gp-ink-faint);
+}
+/* the same fade as under the head, so the last line does not end in a hard cut */
+.gp-panel__foot::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  height: 16px;
+  background: linear-gradient(to top, var(--gp-card), color-mix(in srgb, var(--gp-card) 0%, transparent));
+  pointer-events: none;
+}
+.gp-panel__expand {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--gp-ink-2);
+  cursor: pointer;
+}
+.gp-panel__expand:active {
+  background: var(--gp-chip);
+}
+.gp-panel__expand-icon {
+  transition: transform var(--gp-dur) var(--gp-ease);
+  transform: rotate(180deg);
+}
+.gp-panel__expand.is-up .gp-panel__expand-icon {
+  transform: none;
+}
+.gp-panel__dismiss {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 18px;
+  border: 1px solid var(--gp-ink-faint);
+  border-radius: 999px;
+  background: var(--gp-chip);
+  color: var(--gp-ink);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.gp-panel__dismiss:active {
+  background: var(--gp-chip-hover);
+  transform: translateY(1px);
+}
+.gp-panel__dismiss-icon {
+  width: 16px;
+  height: 16px;
 }
 .gp-panel__close {
   position: absolute;
@@ -836,8 +1018,9 @@ button {
   margin-top: 18px;
 }
 .gp-panel__section--photos {
+  /* The strip bleeds to the card edges and pads itself, so its own padding can
+     end the scroll with the last tile clear of the fade. */
   margin: 14px -20px 0 -22px;
-  padding: 0 20px 0 22px;
 }
 .gp-h3 {
   margin: 0 0 8px;
@@ -910,9 +1093,15 @@ button {
   cursor: pointer;
   transition: background var(--gp-dur) var(--gp-ease), transform var(--gp-dur) var(--gp-ease);
 }
-.gp-chip:hover {
+@media (hover: hover) {
+  .gp-chip:hover {
+    background: var(--gp-chip-hover);
+    transform: translateY(-1px);
+  }
+}
+.gp-chip:active {
   background: var(--gp-chip-hover);
-  transform: translateY(-1px);
+  transform: scale(0.97);
 }
 .gp-chip__flag {
   font-size: 15px;
@@ -963,28 +1152,51 @@ button {
   font-size: 14.5px;
 }
 .gp-readmore__link {
-  display: inline-flex;
+  /* A row, not an inline-flex: when the label wrapped, the icon was flung to the
+     far right of the next line, and 22.5px was never a touch target. */
+  display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--gp-ink-faint);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--gp-paper-2) 55%, transparent);
   font-weight: 700;
+  text-decoration: none;
 }
-.gp-readmore__link svg {
+.gp-readmore__link:hover {
+  text-decoration: underline;
+}
+.gp-readmore__link:active {
+  background: var(--gp-chip-hover);
+}
+.gp-readmore__icon {
+  flex: none;
   opacity: 0.8;
 }
 
 /* ---------- Photo strip ---------------------------------------------- */
 .gp-strip {
   --tile-h: 156px;
+  --gp-strip-fade: 26px;
   display: flex;
   gap: 10px;
   overflow-x: auto;
   overflow-y: hidden;
+  /* A flick that runs out of strip used to chain outward — on iOS that is a
+     back-swipe, on Android a page pan. */
+  overscroll-behavior-x: contain;
   scroll-snap-type: x proximity;
-  scroll-padding-left: 22px;
-  padding: 6px 0 10px;
+  scroll-padding: 0 20px 0 22px;
+  padding: 6px 20px 10px 22px;
   scrollbar-width: thin;
   scrollbar-color: var(--gp-ink-faint) transparent;
   -webkit-overflow-scrolling: touch;
+  /* The tile at the card's edge was cut dead; fade it so it reads as "more". */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--gp-strip-fade)), transparent 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--gp-strip-fade)), transparent 100%);
 }
 .gp-tile {
   position: relative;
@@ -1021,8 +1233,10 @@ button {
   transition: transform 400ms var(--gp-ease);
   background: var(--gp-skeleton-a);
 }
-.gp-tile--photo:hover .gp-tile__img {
-  transform: scale(1.04);
+@media (hover: hover) {
+  .gp-tile--photo:hover .gp-tile__img {
+    transform: scale(1.04);
+  }
 }
 .gp-tile__cap {
   position: absolute;
@@ -1227,17 +1441,24 @@ button {
   transform: translateY(-50%);
 }
 .gp-lightbox__nav--prev {
-  left: 16px;
+  left: calc(16px + var(--gp-safe-l));
 }
 .gp-lightbox__nav--next {
-  right: 16px;
+  right: calc(16px + var(--gp-safe-r));
 }
 .gp-lightbox__close {
-  top: 14px;
-  right: 14px;
+  top: calc(14px + var(--gp-safe-t));
+  right: calc(14px + var(--gp-safe-r));
 }
 
-/* ---------- Responsive ----------------------------------------------- */
+/* ---------- Responsive -----------------------------------------------
+   Three axes, not one:
+     max-width 1024/720  – how much horizontal room the chrome has
+     max-width 720 + min-height 481 – the bottom sheet (a phone stood up)
+     max-height 480      – short viewports: a phone on its side, which used to
+                           get the full desktop layout because the only
+                           breakpoint was width.
+   ---------------------------------------------------------------------- */
 @media (max-width: 1024px) {
   :root {
     --gp-panel-w: min(400px, 44vw);
@@ -1254,8 +1475,14 @@ button {
   }
   .gp-header {
     flex-wrap: wrap;
-    gap: 8px 12px;
-    padding: 8px 12px 8px calc(var(--gp-margin-x) + 10px);
+    gap: 6px 12px;
+    /* 14px, not the gutter's 10: the theme toggle lives in this corner and it is
+       the control someone reaches for when the theme is not what they expected. */
+    padding: calc(7px + var(--gp-safe-t)) calc(14px + var(--gp-safe-r)) 6px
+      calc(var(--gp-margin-x) + 10px + var(--gp-safe-l));
+  }
+  .gp-brand {
+    min-height: 44px;
   }
   .gp-brand__mark {
     width: 34px;
@@ -1271,104 +1498,85 @@ button {
     width: 100%;
     order: 3;
   }
+  /* 48, not 44: the field's border eats into the input, and this is the control
+     a child mis-taps most. */
   .gp-search__field {
-    height: 40px;
+    height: 48px;
   }
   /* The header wraps here and the search takes the whole second row; keep the
      toggle on the first row, opposite the brand, instead of below the search. */
   .gp-theme {
     order: 2;
   }
+  /* The theme toggle is the control you reach for when the theme is not what you
+     expected, so it is the last one that should be small or crowd the edge. */
   .gp-theme__btn {
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
+  }
+
+  /* A pinned card is the wrong shape on a phone: it covered the search field in
+     portrait and ran off the bottom in landscape. Put it where a thumb is. */
+  .gp-search__option,
+  .gp-search__empty {
+    min-height: 48px;
   }
   .gp-theme__pop {
-    width: min(288px, calc(100vw - 20px));
+    position: fixed;
+    top: auto;
+    right: calc(var(--gp-gutter) + var(--gp-safe-r));
+    bottom: calc(var(--gp-gutter) + var(--gp-safe-b));
+    left: calc(var(--gp-gutter) + var(--gp-safe-l));
+    width: auto;
+    max-height: min(70dvh, 440px);
+    border-radius: 14px;
+    border-top: 1px solid var(--gp-ink-faint);
+    padding: 12px 10px calc(10px + var(--gp-safe-b));
   }
+  .gp-theme__pop::before {
+    /* tape only reads as tape when the card is pinned under its button */
+    display: none;
+  }
+  .gp-theme__heading {
+    font-size: 14px;
+  }
+
   .gp-footer {
     justify-content: center;
     text-align: center;
-    padding: 6px 12px 8px;
+    padding: 0 8px calc(1px + var(--gp-safe-b));
     font-size: 11.5px;
-    gap: 2px 14px;
+    gap: 0 8px;
+  }
+  .gp-footer__credits {
+    justify-content: center;
+    flex-wrap: nowrap;
+    column-gap: 3px;
+  }
+  /* 14px-tall links sitting in the Android gesture strip. One short line, four
+     real targets. */
+  .gp-footer__link {
+    min-height: 44px;
+    padding: 0 3px;
+    white-space: nowrap;
+  }
+  .gp-footer__licence {
+    white-space: nowrap;
+    font-size: 11px;
   }
   .gp-footer__note {
     display: none;
   }
   .gp-hint {
-    bottom: 14px;
+    bottom: calc(14px + var(--gp-safe-b));
     font-size: 12.5px;
-    max-width: calc(100vw - 24px);
-    white-space: normal;
-    text-align: center;
   }
 
-  /* bottom sheet */
-  .gp-panel {
-    top: auto;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: auto;
-    min-width: 0;
-    height: 62vh;
-    height: 62dvh;
-  }
-  .gp-panel[data-open='false'] {
-    transform: translateY(calc(100% + 24px));
-  }
-  .gp-card {
-    border-radius: 18px 18px 0 0;
-    box-shadow: 0 -8px 30px rgba(var(--gp-shadow-rgb), 0.28), 0 -1px 0 var(--gp-ink-faint);
-  }
-  .gp-card::before {
-    display: none;
-  }
-  .gp-card__tape {
-    display: none;
-  }
-  .gp-card__scroll {
-    border-radius: 18px 18px 0 0;
-  }
-  .gp-panel__handle {
-    display: block;
-    width: 44px;
-    height: 5px;
-    margin: 0 auto 10px;
-    border-radius: 999px;
-    background: var(--gp-ink-faint);
-  }
-  .gp-panel__head {
-    padding: 10px 16px 10px 18px;
-  }
-  .gp-panel__close {
-    top: 10px;
-    right: 8px;
-  }
-  .gp-panel__ident {
-    gap: 12px;
-  }
-  .gp-panel__flag {
-    width: 54px;
-  }
-  .gp-panel__title {
-    font-size: 23px;
-  }
-  .gp-panel__tagline {
-    font-size: 15.5px;
-  }
-  .gp-panel__body {
-    padding: 2px 16px 22px 18px;
-  }
-  .gp-panel__section--photos {
-    margin: 10px -16px 0 -18px;
-    padding: 0 16px 0 18px;
-  }
   .gp-strip {
     --tile-h: 112px;
     gap: 8px;
-    scroll-padding-left: 18px;
+    scroll-padding: 0 16px 0 18px;
+    padding: 6px 16px 10px 18px;
   }
   .gp-tile {
     width: 96px;
@@ -1399,16 +1607,296 @@ button {
   .gp-facts {
     gap: 8px 10px;
   }
+  /* 35px pills are the most-tapped thing in the sheet after the close button. */
+  .gp-chip {
+    min-height: 44px;
+    padding: 6px 14px 6px 10px;
+    font-size: 14.5px;
+  }
+  .gp-chips {
+    gap: 8px;
+  }
   .gp-lightbox__nav {
     top: auto;
-    bottom: 18px;
+    bottom: calc(18px + var(--gp-safe-b));
     transform: none;
   }
 }
 
-@media (max-width: 380px) {
+/* ---------- Bottom sheet (phone, stood up) ----------------------------
+   Heights are percentages of #stage — the box the sheet actually shares with
+   the globe — not of the viewport. 62dvh was 62% of the whole window taken out
+   of a stage that is already window minus header minus footer: on a 390x670
+   Safari window that left 106px of globe, and because the body never scrolls,
+   iOS never collapses its toolbar to give the dvh back.
+
+   Keep SHEET_QUERY in src/ui/panel.ts in step with this condition.
+   ---------------------------------------------------------------------- */
+@media (max-width: 720px) and (min-height: 481px) {
+  .gp-panel {
+    /* peek: identity plus a glimpse, with the globe keeping the larger half.
+       full: reading height, with enough globe left to aim at and to tap away. */
+    --gp-sheet-peek: clamp(240px, 48%, 340px);
+    --gp-sheet-full: min(88%, 680px);
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    min-width: 0;
+    height: var(--gp-sheet-peek);
+    transition:
+      transform var(--gp-dur) var(--gp-ease),
+      height var(--gp-dur) var(--gp-ease),
+      opacity var(--gp-dur) var(--gp-ease),
+      visibility 0s linear var(--gp-dur);
+  }
+  .gp-panel[data-detent='full'] {
+    height: var(--gp-sheet-full);
+  }
+  /* While a finger is on it the sheet follows the finger, not the clock. */
+  .gp-panel.is-dragging {
+    transition: none;
+    will-change: transform;
+  }
+  .gp-panel[data-open='false'] {
+    transform: translateY(calc(100% + 24px));
+  }
+  .gp-card {
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -8px 30px rgba(var(--gp-shadow-rgb), 0.28), 0 -1px 0 var(--gp-ink-faint);
+  }
+  .gp-card::before {
+    display: none;
+  }
+  .gp-card__tape {
+    display: none;
+  }
+  .gp-panel__grip {
+    display: block;
+  }
+  .gp-panel__foot {
+    display: flex;
+  }
+  /* The card's top-right × is 500-odd px up from the bottom of the screen here.
+     The action bar at the foot of the sheet carries dismissal instead. */
+  .gp-panel__close {
+    display: none;
+  }
+  .gp-panel__head {
+    padding: 2px 16px 10px 18px;
+    /* the head is part of the grab area, so the browser must not claim the drag */
+    touch-action: none;
+  }
+  .gp-panel__ident {
+    gap: 12px;
+    padding-right: 0;
+  }
+  .gp-panel__flag {
+    width: 54px;
+  }
+  .gp-panel__title {
+    font-size: 23px;
+  }
+  .gp-panel__tagline {
+    font-size: 15.5px;
+  }
+  .gp-panel__body {
+    padding: 2px 16px 20px 18px;
+  }
+  .gp-panel__section--photos {
+    margin: 10px -16px 0 -18px;
+  }
+}
+
+/* ---------- Short viewports (a phone on its side) ---------------------
+   844x390 used to get the desktop layout: 32% of the height in header and
+   footer, a side card holding 17.6 screens of article, the photo strip below
+   the fold. A sheet is wrong here — there is no height to give one — so the
+   card stays, and everything around it gets out of its way.
+   ---------------------------------------------------------------------- */
+@media (max-height: 480px) {
+  .gp-header {
+    min-height: 0;
+    gap: 8px 12px;
+    padding: calc(4px + var(--gp-safe-t)) calc(10px + var(--gp-safe-r)) 4px
+      calc(var(--gp-margin-x) + 10px + var(--gp-safe-l));
+  }
+  .gp-brand__mark {
+    width: 30px;
+    height: 30px;
+  }
+  .gp-brand__name {
+    font-size: 19px;
+  }
+  .gp-brand__tagline {
+    display: none;
+  }
+  .gp-brand {
+    min-height: 44px;
+  }
+  .gp-search {
+    width: min(300px, 34vw);
+  }
+  .gp-search__field {
+    height: 48px;
+  }
+  .gp-footer {
+    padding: 0 calc(10px + var(--gp-safe-r)) calc(2px + var(--gp-safe-b))
+      calc(var(--gp-margin-x) + 10px + var(--gp-safe-l));
+    font-size: 11.5px;
+    gap: 0 10px;
+  }
+  .gp-footer__link {
+    min-height: 44px;
+    padding: 0 3px;
+  }
+  .gp-footer__note {
+    display: none;
+  }
+  .gp-hint {
+    bottom: calc(10px + var(--gp-safe-b));
+    font-size: 12.5px;
+  }
+
+  .gp-panel {
+    top: 8px;
+    bottom: 8px;
+    right: calc(10px + var(--gp-safe-r));
+    width: min(392px, 46vw);
+    min-width: 0;
+  }
+  .gp-card::before {
+    display: none;
+  }
+  .gp-card__tape {
+    display: none;
+  }
+  .gp-panel__head {
+    padding: 12px 16px 8px 16px;
+  }
+  .gp-panel__close {
+    top: 4px;
+    right: 4px;
+  }
+  .gp-panel__flag {
+    width: 46px;
+    height: 31px;
+  }
+  .gp-panel__title {
+    font-size: 21px;
+  }
+  .gp-panel__tagline {
+    font-size: 14.5px;
+  }
+  .gp-panel__body {
+    padding: 2px 16px 18px;
+  }
+  .gp-panel__section {
+    margin-top: 14px;
+  }
+  .gp-panel__section--photos {
+    margin: 10px -16px 0;
+  }
+  /* The card is ~360px wide here; two columns wrap "Europe · Western Europe". */
   .gp-facts {
     grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .gp-chip {
+    min-height: 44px;
+    padding: 6px 13px 6px 9px;
+  }
+  .gp-chips {
+    gap: 7px;
+  }
+  .gp-strip {
+    --tile-h: 92px;
+    gap: 8px;
+    scroll-padding: 0 16px;
+    padding: 6px 16px 8px;
+  }
+  .gp-tile {
+    width: 78px;
+  }
+  .gp-tile--big {
+    width: 128px;
+  }
+  .gp-tile__credit {
+    display: none;
+  }
+  .gp-theme__pop {
+    position: fixed;
+    top: auto;
+    right: calc(var(--gp-gutter) + var(--gp-safe-r));
+    bottom: calc(var(--gp-gutter) + var(--gp-safe-b));
+    left: auto;
+    width: min(320px, calc(100vw - 2 * var(--gp-gutter)));
+    max-height: calc(100dvh - 2 * var(--gp-gutter) - var(--gp-safe-b) - var(--gp-safe-t));
+    border-radius: 14px;
+    border-top: 1px solid var(--gp-ink-faint);
+    padding: 10px 10px calc(8px + var(--gp-safe-b));
+  }
+  .gp-theme__pop::before {
+    display: none;
+  }
+  .gp-theme__blurb {
+    display: none;
+  }
+  .gp-theme__row {
+    min-height: 44px;
+    padding: 4px 8px;
+  }
+  .gp-search__option,
+  .gp-search__empty {
+    min-height: 46px;
+  }
+  .gp-search__list {
+    max-height: min(60dvh, 280px);
+  }
+  .gp-lightbox__nav {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* One column everywhere a phone is: at 390 and 414 "Europe · Western Europe"
+   wrapped in a 173px cell and pulled its row out of line with the other. */
+@media (max-width: 460px) {
+  .gp-facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Touch ------------------------------------------------------ */
+@media (hover: none) {
+  /* Hover styles stick after a tap on touch; these are the ones that showed. */
+  .gp-theme__btn:hover {
+    background: var(--gp-card);
+    border-color: var(--gp-ink-faint);
+  }
+  .gp-theme__row:hover {
+    background: transparent;
+  }
+  .gp-theme__row[aria-checked='true']:hover {
+    background: var(--gp-chip);
+  }
+  .gp-search__option:hover {
+    background: transparent;
+  }
+  .gp-search__option.is-active {
+    background: var(--gp-chip);
+  }
+  .gp-panel__close:hover {
+    background: transparent;
+    color: var(--gp-ink-2);
+  }
+  .gp-readmore__link:hover {
+    text-decoration: none;
+  }
+  .gp-search__option:active,
+  .gp-theme__row:active {
+    background: var(--gp-chip-hover);
   }
 }
 
