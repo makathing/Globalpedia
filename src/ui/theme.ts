@@ -17,7 +17,6 @@
  */
 import type { EventBus } from '../core/events';
 import {
-  DEFAULT_DARK_THEME,
   DEFAULT_THEME,
   isThemeId,
   themeById,
@@ -95,7 +94,13 @@ export function createThemeController(bus: EventBus): ThemeController {
     // index.html paints <html> with the paper color before first paint so there is
     // no flash; keep it in step or it would be stale from the second theme on.
     const paper = theme.css['--gp-paper'];
-    if (paper) root.style.backgroundColor = paper;
+    if (paper) {
+      root.style.backgroundColor = paper;
+      // The browser chrome should be the same sheet of paper as the page. Without this
+      // a Night Study globe sits under a bright white address bar, which is the most
+      // visible tell that this is a web page rather than an app.
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', paper);
+    }
   }
 
   function set(id: ThemeId, opts?: { persist?: boolean }): void {
@@ -104,10 +109,7 @@ export function createThemeController(bus: EventBus): ThemeController {
     const previous = currentId;
 
     paint(theme);
-    if (persist) {
-      writeSaved(theme.id);
-      stopFollowingSystem();
-    }
+    if (persist) writeSaved(theme.id);
     currentId = theme.id;
     bus.emit('ui:theme', { id: theme.id });
     // Silent on the startup pass — only a real change is worth announcing.
@@ -115,40 +117,16 @@ export function createThemeController(bus: EventBus): ThemeController {
   }
 
   // --- startup resolution ------------------------------------------------
-  // A saved choice wins; then whatever the pre-paint script settled on; then the
-  // OS preference. `following` stays true only while the viewer has never chosen.
+  // A saved choice wins; then whatever the pre-paint script settled on; otherwise
+  // Classroom. The globe used to open in Night Study for anyone whose phone was in
+  // dark mode, which meant most people met the app in a theme that looks nothing like
+  // a school globe — and nothing in the picker told them why. Dark mode is now a theme
+  // you choose, not one you are given.
   const saved = readSaved();
   const preset = root.getAttribute('data-theme');
-  const query = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;
 
-  let following = saved === null;
-  let stopFollowing: (() => void) | null = null;
-
-  function stopFollowingSystem(): void {
-    following = false;
-    stopFollowing?.();
-    stopFollowing = null;
-  }
-
-  const initial: ThemeId = saved
-    ? saved
-    : isThemeId(preset)
-      ? preset
-      : query?.matches
-        ? DEFAULT_DARK_THEME
-        : DEFAULT_THEME;
-
+  const initial: ThemeId = saved ?? (isThemeId(preset) ? preset : DEFAULT_THEME);
   set(initial, { persist: false });
-
-  if (following && query && typeof query.addEventListener === 'function') {
-    const onChange = (ev: MediaQueryListEvent): void => {
-      if (!following) return;
-      set(ev.matches ? DEFAULT_DARK_THEME : DEFAULT_THEME, { persist: false });
-    };
-    query.addEventListener('change', onChange);
-    stopFollowing = () => query.removeEventListener('change', onChange);
-    disposers.push(() => stopFollowing?.());
-  }
 
   return {
     current: () => themeById(currentId),

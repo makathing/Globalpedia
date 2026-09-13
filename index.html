@@ -2,7 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#fbf8f1" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Globalpedia" />
     <title>Globalpedia — spin the world, learn a country</title>
     <meta name="description" content="A 3D school globe you can spin. Tap a country to see photos and a kid-friendly encyclopedia entry." />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23bfe3f5' stroke='%233b2f2a' stroke-width='2'/%3E%3Cpath d='M8 12c4-3 8 1 12-1M6 20c5 2 10-2 16 1' fill='none' stroke='%233b2f2a' stroke-width='1.5'/%3E%3C/svg%3E" />
@@ -23,17 +27,20 @@
           nightstudy: '#171d2b'
         };
         var DARK = { chalkboard: 1, blueprint: 1, nightstudy: 1 };
+        var has = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
         var id = null;
         try { id = localStorage.getItem('gp:theme'); } catch (e) { /* privacy mode */ }
-        if (!id || !PAPER[id]) {
-          id = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)
-            ? 'nightstudy' : 'classroom';
-        }
+        // hasOwnProperty, not a bare lookup: 'constructor' and 'toString' are truthy on any
+        // object, so a poisoned value used to pass validation and stamp a garbage paper colour.
+        // And no dark-mode branch — everyone opens in Classroom unless they chose otherwise.
+        if (!id || !has(PAPER, id)) id = 'classroom';
         var r = document.documentElement;
         r.setAttribute('data-theme', id);
         r.style.setProperty('--gp-paper', PAPER[id]);
-        r.style.setProperty('color-scheme', DARK[id] ? 'dark' : 'light');
+        r.style.setProperty('color-scheme', has(DARK, id) ? 'dark' : 'light');
         r.style.backgroundColor = PAPER[id];
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', PAPER[id]);
       })();
     </script>
   </head>
