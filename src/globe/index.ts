@@ -13,6 +13,7 @@ import type { EventBus } from '../core/events';
 import { DEFAULT_THEME, themeById, type GlobeTheme, type ThemeId } from '../core/themes';
 import type { CountryRecord } from '../core/types';
 import { createControls } from './controls';
+import { BUILD_PHASES, type BuildPhase } from './texture';
 import {
   createGlobeScene,
   DEFAULT_DISTANCE,
@@ -38,6 +39,21 @@ export interface GlobeOptions {
   textureSize?: 8192 | 4096;
   /** Theme to paint on first build (default `DEFAULT_THEME`). Later switches arrive on `ui:theme`. */
   theme?: ThemeId;
+  /**
+   * Called as the globe builds, so a loading card can say what is happening and move while it
+   * happens. `fraction` is monotonic 0…1 and weighted by each phase's measured cost; `phase` is
+   * a stable id; `label` is a plain sentence the caller may use or ignore. The last two calls
+   * arrive *after* the globe is already on screen — see `createGlobe`'s note on `picking`.
+   */
+  onProgress?(progress: GlobeProgress): void;
+}
+
+export interface GlobeProgress {
+  /** Monotonic 0…1. Approximate, but weighted by measured phase cost, so it does not lurch. */
+  fraction: number;
+  phase: BuildPhase | 'ready';
+  /** A short sentence for a loading card. */
+  label: string;
 }
 
 export interface GlobeHandle {
@@ -115,35 +131,68 @@ interface Flight {
   resolve(): void;
 }
 
-export function createGlobe(
+/**
+ * Build the globe. Resolves once it is **on screen and interactive**.
+ *
+ * It is asynchronous for one reason: the build is a second or so of raster work, and doing it in
+ * one unbroken block welded the main thread shut — the loading spinner stopped dead and the page
+ * read as hung, which is the first lag anybody meets. It now hands a frame back to the browser
+ * between phases and reports where it has got to through `opts.onProgress`. That does not make it
+ * much faster; it makes it visibly alive, which was the complaint.
+ *
+ * Two consequences worth knowing:
+ *  - The map is painted before the printed names' pick layers are, so the globe appears a beat
+ *    before those finish. In that window picking answers from the polygons alone — correct, just
+ *    coarser: clicking the letters of a name does not yet select it. `onProgress` reports the
+ *    `picking` phase while that runs and `ready` when it is done.
+ *  - Nothing is drawn until this resolves, so the caller still has a single moment at which to
+ *    hide its own overlay.
+ */
+export async function createGlobe(
   container: HTMLElement,
   world: Topology,
   countries: Record<string, CountryRecord>,
   bus: EventBus,
   opts: GlobeOptions = {},
-): GlobeHandle {
+): Promise<GlobeHandle> {
   const reducedMotion =
     typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const coarsePointer = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
 
+  // --- progress ---------------------------------------------------------------------------------
+  // The fraction is the sum of the shares of the phases already finished, so it advances in
+  // steps the size of the work they actually cost rather than in equal thirds.
+  function report(phase: BuildPhase | 'ready', within = 0): void {
+    if (!opts.onProgress) return;
+    const i = BUILD_PHASES.findIndex((p) => p.id === phase);
+    const before = i < 0 ? 1 : BUILD_PHASES.slice(0, i).reduce((a, p) => a + p.share, 0);
+    const share = i < 0 ? 0 : BUILD_PHASES[i].share;
+    opts.onProgress({
+      fraction: phase === 'ready' ? 1 : Math.min(1, before + share * within),
+      phase,
+      label: BUILD_PHASES[i]?.label ?? 'Ready',
+    });
+  }
+
   // --- textures + scene -----------------------------------------------------------------------
   let theme: GlobeTheme = themeById(opts.theme ?? DEFAULT_THEME).globe;
-  let textures: ReturnType<typeof buildGlobeTextures> | null = null;
-  const gs = createGlobeScene(
+  let textures: Awaited<ReturnType<typeof buildGlobeTextures>> | null = null;
+  const gs = await createGlobeScene(
     container,
-    (maxTextureSize) => {
+    async (maxTextureSize) => {
       const mapWidth = opts.textureSize ?? (maxTextureSize >= 8192 && !coarsePointer ? 8192 : 4096);
-      textures = buildGlobeTextures(world, countries, {
+      textures = await buildGlobeTextures(world, countries, {
         mapWidth,
         idWidth: Math.min(4096, maxTextureSize),
         theme,
+        onPhase: report,
       });
       return textures.map;
     },
     theme,
   );
   if (!textures) throw new Error('globe textures were not built');
-  const tex = textures as ReturnType<typeof buildGlobeTextures>;
+  const tex = textures as Awaited<ReturnType<typeof buildGlobeTextures>>;
   const { renderer, scene, camera, globeSpin, sphere } = gs;
 
   // Both ride inside the spinning group, so they turn with the map rather than sliding over it.
@@ -461,6 +510,19 @@ export function createGlobe(
     globeSpin.rotation.y = spinForLongitude(-35);
   }
   if (!document.hidden) start();
+
+  // The last two eight-million-pixel passes run with the globe already on screen. Until they
+  // land, clicking a printed *name* falls through to whatever polygon is under it; clicking the
+  // country itself has worked since the index was built. `picking.refresh()` re-answers the
+  // hover the moment they do, so a pointer already resting on a name updates without moving.
+  void tex
+    .refinePickIndex()
+    .then(() => {
+      if (disposed) return;
+      picking.refresh();
+      report('ready');
+    })
+    .catch((err: unknown) => console.error('Globalpedia could not finish the pick index', err));
 
   return {
     flyTo,

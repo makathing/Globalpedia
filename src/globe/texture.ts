@@ -13,7 +13,14 @@ import { DEFAULT_THEME, themeById, type GlobeTheme } from '../core/themes';
 import { lookupCountryId, type IdMap } from './id-map';
 import { labelFont, layoutLabels, type LabelLayout, type PlacedLabel } from './label-layout';
 import { projectX, projectY } from './math';
-import { CAP_DEGREES, compositeSurface, drawAging, drawGoreSeams, drawPolarCaps } from './surface';
+import {
+  CAP_DEGREES,
+  drawAging,
+  drawGoreSeams,
+  drawPolarCaps,
+  surfaceStages,
+  warmSurfaceTiles,
+} from './surface';
 
 /** Properties carried by production `public/data/world-50m.json` geometries. */
 export interface WorldProps {
@@ -49,6 +56,13 @@ export interface GlobeTextures {
    * paint changes — so the caller just has to flag `mapTexture.needsUpdate`.
    */
   redraw(theme: GlobeTheme): void;
+  /**
+   * Finish the pick index: stamp the printed names' boxes and rasterise their ink, so that
+   * clicking a name selects its country and a state too small to hold a pixel becomes
+   * reachable at all. Until this resolves, `lookupId` answers from the polygons alone — which
+   * is correct, just coarser. Safe to call more than once; the work happens once.
+   */
+  refinePickIndex(): Promise<void>;
 }
 
 /**
@@ -426,38 +440,28 @@ function drawLabels(
  * the ink; age sits above the print; and the gore seams go last, because the join is the
  * outermost physical thing on the object.
  */
-function paintMap(
+/**
+ * The paint, as the ordered list of stages a real object acquires.
+ *
+ * Handed back as a list rather than run inline so the *first* build can breathe between them.
+ * At 4096 the paint is over a second of unbroken main thread — by a distance the longest block
+ * on the boot path, and the reason the loading card used to freeze solid and the page read as
+ * hung. Each stage writes over the one before on an offscreen canvas that nothing reads until
+ * the texture is uploaded, so there is nothing to see in between and yielding is free.
+ *
+ * A theme switch still runs them straight through: it is already debounced onto an idle slot,
+ * and half a repaint is a thing a viewer *would* see.
+ */
+function paintStages(
   ctx: CanvasRenderingContext2D,
   shapesByIndex: (CountryShape | null)[],
   paths: PaintPaths,
   labels: LabelLayout,
   width: number,
   theme: GlobeTheme,
-): void {
+): (() => void)[] {
   const height = width / 2;
   const s = width / 8192; // stroke widths are specified "at 8k"
-
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.globalCompositeOperation = 'source-over';
-
-  // Ocean.
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = theme.ocean;
-  ctx.fillRect(0, 0, width, height);
-
-  // Country fills. fillAlpha < 1 lets the sea show through, for line-work looks.
-  ctx.save();
-  ctx.globalAlpha = theme.fillAlpha;
-  for (let i = 0; i < shapesByIndex.length; i++) {
-    const shape = shapesByIndex[i];
-    const path = paths.fills[i];
-    if (!shape || !path) continue;
-    ctx.fillStyle = theme.palette[shape.paletteIndex];
-    ctx.fill(path, 'evenodd');
-  }
-  ctx.restore();
-
-  drawGraticule(ctx, width, height, s, theme.graticule, (CAP_DEGREES / 180) * height);
 
   // Borders and coastlines. A single uniform-width pass is the loudest "a computer drew this"
   // tell there is, so the mesh is stroked three times at sub-pixel offsets: the main line, then
@@ -481,35 +485,73 @@ function paintMap(
     [w * 0.55, 0.36 + 0.3 * wob, off, off * 0.55],
     [w * 0.45, 0.3 + 0.28 * wob, -off * 0.85, -off * 0.45],
   ];
-  ctx.save();
-  ctx.strokeStyle = theme.outline;
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-  for (const [lineWidth, alpha, dx, dy] of passes) {
-    ctx.setTransform(1, 0, 0, 1, dx, dy);
-    ctx.globalAlpha = alpha;
-    ctx.lineWidth = lineWidth;
-    ctx.stroke(paths.borders);
-  }
-  ctx.restore();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-  // The names, over the line-work but under every ink and paper pass below, so they age
-  // with the print instead of floating on top of it.
-  drawLabels(ctx, labels, width, theme);
+  return [
+    // Ocean.
+    () => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = theme.ocean;
+      ctx.fillRect(0, 0, width, height);
+    },
+    // Country fills. fillAlpha < 1 lets the sea show through, for line-work looks.
+    () => {
+      ctx.save();
+      ctx.globalAlpha = theme.fillAlpha;
+      for (let i = 0; i < shapesByIndex.length; i++) {
+        const shape = shapesByIndex[i];
+        const path = paths.fills[i];
+        if (!shape || !path) continue;
+        ctx.fillStyle = theme.palette[shape.paletteIndex];
+        ctx.fill(path, 'evenodd');
+      }
+      ctx.restore();
+    },
+    () => drawGraticule(ctx, width, height, s, theme.graticule, (CAP_DEGREES / 180) * height),
+    () => {
+      ctx.save();
+      ctx.strokeStyle = theme.outline;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      for (const [lineWidth, alpha, dx, dy] of passes) {
+        ctx.setTransform(1, 0, 0, 1, dx, dy);
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = lineWidth;
+        ctx.stroke(paths.borders);
+      }
+      ctx.restore();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    },
+    // The names, over the line-work but under every ink and paper pass below, so they age
+    // with the print instead of floating on top of it.
+    () => drawLabels(ctx, labels, width, theme),
+    // The physical surface, in the order a real object acquires it. Its own fills are separate
+    // stages: at 4096 they are the longest block in the whole paint.
+    ...surfaceStages(ctx, width, height, theme.surface, theme.grainAlpha),
+    () => drawAging(ctx, width, height, s, theme),
+    () => drawGoreSeams(ctx, width, height, s, theme),
+    // The caps go on LAST, over the paper tooth rather than under it. That ordering is the whole
+    // point: the pole starburst is high-frequency detail in u being undersampled, and the fine
+    // tooth is the strongest such detail there is. A cap that carried tooth would still shimmer.
+    () => {
+      drawPolarCaps(ctx, width, height, s, theme);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    },
+  ];
+}
 
-  // The physical surface, in the order a real object acquires it.
-  compositeSurface(ctx, width, height, theme.surface, theme.grainAlpha);
-  drawAging(ctx, width, height, s, theme);
-  drawGoreSeams(ctx, width, height, s, theme);
-
-  // The caps go on LAST, over the paper tooth rather than under it. That ordering is the whole
-  // point: the pole starburst is high-frequency detail in u being undersampled, and the fine
-  // tooth is the strongest such detail there is. A cap that carried tooth would still shimmer.
-  drawPolarCaps(ctx, width, height, s, theme);
-
-  ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = 'source-over';
+/** The whole paint, straight through. Used by a theme switch. */
+function paintMap(
+  ctx: CanvasRenderingContext2D,
+  shapesByIndex: (CountryShape | null)[],
+  paths: PaintPaths,
+  labels: LabelLayout,
+  width: number,
+  theme: GlobeTheme,
+): void {
+  for (const stage of paintStages(ctx, shapesByIndex, paths, labels, width, theme)) stage();
 }
 
 /**
@@ -780,13 +822,72 @@ export interface BuildTexturesOptions {
   idWidth?: number;
   /** Colours for the first paint. Swap later with `GlobeTextures.redraw`. */
   theme: GlobeTheme;
+  /**
+   * Called before each phase, after the browser has been given a frame to paint in, and again
+   * *within* the longest phase as it progresses. `within` is 0…1 through that phase, so a
+   * loading bar advances through the paint instead of sitting still for a second of it.
+   */
+  onPhase?(phase: BuildPhase, within: number): void;
 }
 
-export function buildGlobeTextures(
+/**
+ * The phases of a build, in order, with the share of the wall clock each one measured at.
+ *
+ * The shares are used for nothing but the progress fraction, so approximate is fine — but they
+ * are measured rather than guessed, because a bar that crawls and then jumps is worse than no
+ * bar. `picking` runs *after* the globe is already on screen.
+ */
+export const BUILD_PHASES = [
+  { id: 'shapes', share: 0.02, label: 'Tracing the coastlines' },
+  { id: 'index', share: 0.13, label: 'Learning where every country is' },
+  { id: 'labels', share: 0.03, label: 'Finding room for every name' },
+  { id: 'paths', share: 0.05, label: 'Inking the borders' },
+  { id: 'surface', share: 0.42, label: 'Ageing the paper' },
+  { id: 'paint', share: 0.21, label: 'Printing the map' },
+  { id: 'picking', share: 0.14, label: 'Making the names clickable' },
+] as const;
+export type BuildPhase = (typeof BUILD_PHASES)[number]['id'];
+
+/**
+ * Hand the frame back to the browser, and do not come back until it has actually painted.
+ *
+ * A plain `setTimeout(0)` yields the thread but promises nothing about a paint, and the thing
+ * being fixed here is precisely that the loading card freezes: the work was one unbroken block
+ * of main thread, so the spinner stopped and the page read as hung. `requestAnimationFrame`
+ * lands before the next paint and the timeout inside it lands after it, so awaiting this is a
+ * guarantee that one frame reached the screen. A hidden tab gets no rAF, so it just yields.
+ */
+function breathe(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame !== 'function' || document.hidden) {
+      setTimeout(resolve, 0);
+      return;
+    }
+    requestAnimationFrame(() => setTimeout(resolve, 0));
+  });
+}
+
+/**
+ * Build the globe's rasters, breathing between phases.
+ *
+ * Resolves as soon as the **map is painted** — which is everything needed to put the globe on
+ * screen and to pick a country by its polygon. The last two passes, the printed names' ink and
+ * their boxes, refine picking only: nothing draws them and `lookupId` already guards on their
+ * being empty. They are left to `refinePickIndex`, so two of the three eight-million-pixel
+ * passes happen with the globe already visible rather than in front of a blank page. It is a
+ * reordering of independent steps, not a duplication: no work is done twice.
+ */
+export async function buildGlobeTextures(
   world: Topology,
   countries: Record<string, CountryRecord>,
   options: BuildTexturesOptions,
-): GlobeTextures {
+): Promise<GlobeTextures> {
+  const phase = async (id: BuildPhase, within = 0): Promise<void> => {
+    await breathe();
+    options.onPhase?.(id, within);
+  };
+
+  await phase('shapes');
   const collection = pickCollection(world);
   const geometries = collection.geometries;
   // Indices into an 8-entry palette. Every theme's palette is 8 long, so these stay
@@ -819,9 +920,11 @@ export function buildGlobeTextures(
   // in the middle (a label never takes an assigned pixel). Both are theme-independent and
   // built exactly once.
   const pickable = shapesByIndex.map((s) => (s && shapes.has(s.iso3) ? s : null));
+  await phase('index');
   const idMap = buildIdMap(pickable, options.idWidth ?? 4096);
   const spans = new Map<string, number>();
   for (const shape of shapes.values()) spans.set(shape.iso3, mainLandmassSpan(shape.geometry));
+  await phase('labels');
   const labels = layoutLabels(countries, {
     // Territory, not ink: placement asks whose ground a name would stand on. The ink
     // index happens to be empty at this point, but saying so explicitly keeps this
@@ -829,8 +932,7 @@ export function buildGlobeTextures(
     countryAt: (lat, lng) => lookupCountryId(idMap, (lng + 180) / 360, (lat + 90) / 180),
     lngSpanOf: (iso3) => spans.get(iso3) ?? null,
   });
-  buildLabelInkIndex(idMap, labels, stampLabelBoxes(idMap, labels));
-
+  await phase('paths');
   const width = options.mapWidth;
   const [map, mapCtx] = makeCanvas(width, width / 2);
   // Theme-independent and costly: computed once, reused by every repaint. The arc mesh AND
@@ -847,8 +949,20 @@ export function buildGlobeTextures(
       return path;
     }),
   };
-  paintMap(mapCtx, shapesByIndex, paths, labels, width, options.theme);
+  // The paper tiles are memoised for the life of the module but have to be built once, and on a
+  // cold boot that lands inside the paint as one unsplittable block. Build them first instead.
+  await phase('surface');
+  await warmSurfaceTiles(options.theme.surface, options.theme.grainAlpha, breathe);
 
+  // The paint is the long pole — over a second at 4096 — so it breathes between its stages
+  // rather than only before them, and reports how far through it is as it goes.
+  const stages = paintStages(mapCtx, shapesByIndex, paths, labels, width, options.theme);
+  for (let i = 0; i < stages.length; i++) {
+    await phase('paint', i / stages.length);
+    stages[i]();
+  }
+
+  let refined: Promise<void> | null = null;
   return {
     map,
     idMap,
@@ -856,6 +970,14 @@ export function buildGlobeTextures(
     labels,
     redraw(theme) {
       paintMap(mapCtx, shapesByIndex, paths, labels, width, theme);
+    },
+    refinePickIndex() {
+      // Idempotent: the caller fires this and forgets it, and a second call must not re-raster.
+      refined ??= (async () => {
+        await phase('picking');
+        buildLabelInkIndex(idMap, labels, stampLabelBoxes(idMap, labels));
+      })();
+      return refined;
     },
   };
 }

@@ -276,17 +276,19 @@ function buildStand(theme: GlobeTheme): Stand {
 
 /**
  * @param makeMap builds the equirectangular map canvas; receives the GPU's max texture size so the
- *                caller can pick 8192 vs 4096 before rasterising.
+ *                caller can pick 8192 vs 4096 before rasterising. It may take its time and yield
+ *                to the browser while it does — the renderer exists before it is called precisely
+ *                so that `maxTextureSize` is known, and nothing else is built until it resolves.
  * @param theme   colours for the initial paint. Everything a theme touches later (both materials
  *                and all three lights) is returned on the GlobeScene so it can be mutated in place.
  */
-export function createGlobeScene(
+export async function createGlobeScene(
   container: HTMLElement,
-  makeMap: (maxTextureSize: number) => HTMLCanvasElement,
+  makeMap: (maxTextureSize: number) => HTMLCanvasElement | Promise<HTMLCanvasElement>,
   theme: GlobeTheme,
-): GlobeScene {
+): Promise<GlobeScene> {
   const renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-  const mapCanvas = makeMap(renderer.capabilities.maxTextureSize);
+  const mapCanvas = await makeMap(renderer.capabilities.maxTextureSize);
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.domElement.style.display = 'block';

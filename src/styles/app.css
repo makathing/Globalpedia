@@ -5,7 +5,12 @@
    Class prefix: gp-  (BEM-ish)
    ===================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Nunito:wght@400;600;700&display=swap');
+/* The webfonts are loaded from index.html, NOT with an @import here, and that is
+   load-bearing. A remote `@import` is discovered only once this sheet has been parsed
+   and then blocks rendering AND script execution until it answers — so the globe, and
+   every line of our JavaScript, waited on fonts.googleapis.com before it could start.
+   Measured at 12.7 s to first line of app code on a slow link. The fallback stacks in
+   --gp-font-head / --gp-font-body below are what the page uses until the fonts land. */
 
 /* ---------- Tokens (Classroom = the no-JS fallback) -------------------
    src/core/themes.ts is the source of truth for all six themes; src/ui/theme.ts

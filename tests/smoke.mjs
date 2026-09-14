@@ -10,10 +10,14 @@ import { createServer } from 'node:net';
 // readiness poll hangs. Also never let the run wedge forever.
 process.env.NO_PROXY = [process.env.NO_PROXY, 'localhost,127.0.0.1,::1'].filter(Boolean).join(',');
 process.env.no_proxy = process.env.NO_PROXY;
+// The suite drives six themes plus two viewports through a real WebGL build, so it is
+// minutes, not seconds. The cap is only here so a wedged run cannot hang CI forever —
+// keep it well clear of a healthy run's length or it fires on the finish line.
+const WATCHDOG_MS = 1_200_000;
 const watchdog = setTimeout(() => {
-  console.error('✖ smoke test exceeded 600s — aborting');
+  console.error(`✖ smoke test exceeded ${WATCHDOG_MS / 1000}s — aborting`);
   process.exit(1);
-}, 600000);
+}, WATCHDOG_MS);
 watchdog.unref();
 
 /** Pick a free port so a stray dev server never blocks the run. */
@@ -96,7 +100,10 @@ try {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
-  await page.waitForFunction(() => document.querySelector('#globe canvas') !== null, null, { timeout: 30000 });
+  // Readiness is the loading card going away, not a canvas existing. The build yields between
+  // phases now and puts a globe on screen early on purpose, so the canvas appears long before
+  // the work is done — waiting on it measured the wrong thing.
+  await page.waitForFunction(() => document.querySelector('.gp-loading')?.hidden === true, null, { timeout: 180000 });
   await page.waitForTimeout(2500);
   await page.screenshot({ path: `${OUT}01-home.png` });
 
@@ -250,8 +257,9 @@ try {
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await mobile.route(/wikipedia\.org|wikimedia\.org/, (r) => r.abort());
-  await mobile.goto(`http://localhost:${PORT}/#BRA`, { waitUntil: 'networkidle' });
-  await mobile.waitForTimeout(3000);
+  await mobile.goto(`http://localhost:${PORT}/#BRA`, { waitUntil: 'domcontentloaded' });
+  await mobile.waitForFunction(() => document.querySelector('.gp-loading')?.hidden === true, null, { timeout: 180000 });
+  await mobile.waitForTimeout(2500);
   await mobile.screenshot({ path: `${OUT}04-mobile-brazil.png` });
   check(/Brazil/.test(await mobile.locator('#panel').innerText()), 'deep link #BRA opens Brazil on mobile');
 
@@ -262,4 +270,5 @@ try {
   preview.kill();
 }
 console.log(`Screenshots in ${OUT}`);
+clearTimeout(watchdog);
 if (fails.length) { console.error(`${fails.length} smoke check(s) failed`); process.exit(1); }

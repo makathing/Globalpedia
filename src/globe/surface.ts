@@ -332,6 +332,29 @@ function getMottleTile(): HTMLCanvasElement {
  */
 const surfaceTiles = new Map<string, HTMLCanvasElement>();
 
+/**
+ * Build the memoised tiles this theme's surface will need, yielding between them.
+ *
+ * Nothing here changes what is drawn: `surfaceTile` and its two sources are already memoised
+ * for the life of the module, and this simply fills those caches early and in pieces. It exists
+ * because on a cold boot the whole lot lands inside the first surface fill — measured at
+ * 781 ms at 4096, the longest single block left on the boot path once the rest of the paint had
+ * been broken up, and long enough to stop the loading spinner dead on its own.
+ *
+ * The caller supplies the yield so this file does not have to know how the host wants to breathe.
+ */
+export async function warmSurfaceTiles(
+  surface: SurfaceTheme,
+  grain: number,
+  breathe: () => Promise<void>,
+): Promise<void> {
+  getMottleTile();
+  await breathe();
+  getFibreTile();
+  await breathe();
+  surfaceTile(surface, grain);
+}
+
 function surfaceTile(surface: SurfaceTheme, grain: number): HTMLCanvasElement {
   const key = `${surface.paperFiber}|${surface.halftone}|${surface.inkMottle}|${grain}`;
   const hit = surfaceTiles.get(key);
@@ -388,36 +411,69 @@ function surfaceTile(surface: SurfaceTheme, grain: number): HTMLCanvasElement {
 const POLE_SOFTEN_DEGREES = 20;
 const POLE_SOFTEN_ALPHA = 0.34;
 
-export function compositeSurface(
+/**
+ * How many slices the full-strength fill is cut into.
+ *
+ * A pattern fill carries a fixed setup cost regardless of area — about 21 ms — so the count of
+ * fills is normally the thing to minimise, and this file says so a few lines down. That is still
+ * true for a *theme switch*, which runs on an idle slot and must not show a half-painted map.
+ * It is the wrong optimisation for the very first one: measured at 4096, this composite is 667 ms
+ * in one block, which is the longest thing left on the boot path and easily enough to stop the
+ * loading spinner dead. Four slices trade roughly 60 ms of extra setup for a longest block of
+ * about 170, and the pattern is anchored to the canvas origin so slicing it is pixel-identical.
+ */
+const SURFACE_SLICES = 4;
+
+/**
+ * The surface composite, as a list of fills. A theme switch (`paintMap`) runs them straight
+ * through, so the map is never seen half-painted; the first build interleaves a frame between
+ * them so the page keeps breathing while it is still behind the loading card.
+ */
+export function surfaceStages(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   surface: SurfaceTheme,
   grain: number,
-): void {
+): (() => void)[] {
   const pattern = ctx.createPattern(surfaceTile(surface, grain), 'repeat');
-  if (!pattern) return;
+  if (!pattern) return [];
   const band = Math.min(height / 2, (POLE_SOFTEN_DEGREES / 180) * height);
+  const middle = height - 2 * band;
 
-  ctx.save();
-  ctx.globalCompositeOperation = 'overlay';
-  ctx.fillStyle = pattern;
+  const begin = (): void => {
+    ctx.save();
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.fillStyle = pattern;
+  };
 
+  const stages: (() => void)[] = [];
   // Everything away from the poles, at full strength.
-  ctx.globalAlpha = 1;
-  ctx.fillRect(0, band, width, height - 2 * band);
+  for (let i = 0; i < SURFACE_SLICES; i++) {
+    const y0 = band + (middle * i) / SURFACE_SLICES;
+    const y1 = band + (middle * (i + 1)) / SURFACE_SLICES;
+    stages.push(() => {
+      begin();
+      ctx.globalAlpha = 1;
+      ctx.fillRect(0, y0, width, y1 - y0);
+      ctx.restore();
+    });
+  }
 
   // Both polar bands in ONE clipped fill. Splitting them into a latitude ramp of slabs was the
   // obvious way to do this and cost 495 ms at 8k: a pattern fill carries ~21 ms of fixed setup
   // regardless of area, so the number of pattern fills is the thing to minimise, not the pixels.
-  ctx.beginPath();
-  ctx.rect(0, 0, width, band);
-  ctx.rect(0, height - band, width, band);
-  ctx.clip();
-  ctx.globalAlpha = POLE_SOFTEN_ALPHA;
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.restore();
+  stages.push(() => {
+    begin();
+    ctx.beginPath();
+    ctx.rect(0, 0, width, band);
+    ctx.rect(0, height - band, width, band);
+    ctx.clip();
+    ctx.globalAlpha = POLE_SOFTEN_ALPHA;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  });
+  return stages;
 }
 
 /* -- age and wear ---------------------------------------------------------------------------- */

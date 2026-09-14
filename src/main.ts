@@ -40,6 +40,7 @@ async function boot(): Promise<void> {
 
   let countries: Record<string, CountryRecord> = {};
   let globe: GlobeHandle | null = null;
+  let booted = false;
 
   try {
     const data = await loadAll(bus);
@@ -51,6 +52,15 @@ async function boot(): Promise<void> {
     // so boot the globe in it rather than in the default and re-theming a frame later.
     const stamped = document.documentElement.dataset.theme;
     globe = await createGlobe($('globe'), data.world, countries, bus, {
+      // Say what is happening. Building the map is seconds of real work, and a card that
+      // sits on one line for all of it reads as hung rather than busy.
+      //
+      // Only until the globe is up, though: the pick index is refined after it is already on
+      // screen and interactive, and those phases report too. Re-opening the card for them
+      // would hide a working globe behind a spinner that never goes away.
+      onProgress: ({ label, phase }) => {
+        if (!booted && phase !== 'ready') ui.setLoading(true, label);
+      },
       autoRotate: true,
       initialIso3: countries[initial] ? initial : undefined,
       theme: isThemeId(stamped) ? stamped : undefined,
@@ -60,6 +70,7 @@ async function boot(): Promise<void> {
     ui.setLoading(true, 'Sorry — the globe could not load. Please refresh the page.');
     return;
   }
+  booted = true;
   ui.setLoading(false);
   // Exposed so tests can hold the globe still; auto-rotate resuming on its own timer
   // otherwise makes "did anything move?" checks racy.
